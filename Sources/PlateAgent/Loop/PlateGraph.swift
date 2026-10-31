@@ -62,6 +62,9 @@ struct PlateGraph: Sendable {
 
     /// The graph of the code files under `sources`, with what starts them found anywhere else under `root`.
     static func read(_ sources: [URL], root: URL, maxScan: Int = 3_000) -> PlateGraph {
+        // PIN: standardized as the files are: `/private/tmp/x` is `/tmp/x` once standardized, and a root that is not
+        // would hold none of its own files.
+        let root = root.standardizedFileURL
         let sourceFiles = sources.flatMap { codeFiles(under: $0) }
         guard !sourceFiles.isEmpty else { return PlateGraph() }
         let languages = Set(sourceFiles.map { $0.pathExtension.lowercased() })

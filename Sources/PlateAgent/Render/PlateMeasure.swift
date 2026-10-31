@@ -113,7 +113,7 @@ enum PlateMeasure {
         for item in raw.overlaps {
             found.append(PlateFinding(.overlap, item.a, numbers: [Int(item.w), Int(item.h)],
                                       "\(describe(item.a, spec)) is drawn over \(describe(item.b, spec)) (\(Int(item.w))×\(Int(item.h)) px): "
-                                          + "shorten or drop the label, or move one of the boxes to another column."))
+                                          + "shorten or drop the label, or move one of the boxes to another column.", other: item.b))
         }
         for item in raw.outside {
             found.append(PlateFinding(.outside, item.id, numbers: [Int(item.x), Int(item.right)],

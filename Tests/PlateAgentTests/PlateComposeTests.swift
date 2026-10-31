@@ -124,7 +124,9 @@ final class PlateComposeTests: XCTestCase {
          "walk":[{"from":"craft","to":"CraftRuntimeRoot"},{"from":"CraftAppRoot","to":"CraftRuntimeRoot","label":"boot · open · turn"},{"from":"CraftRuntimeRoot","to":"SessionService"},{"from":"SessionService","to":"TranscriptService"},{"from":"TranscriptService","to":"worker","label":"perform"},{"from":"worker","to":"MLX","label":"generate"},{"from":"SessionService","to":"RecordsService"},{"from":"SessionService","to":"ProjectService"},{"from":"SessionService","to":"WatchService"},{"from":"WatchService","to":"ThreadService","label":"files"}],
          "externals":[{"name":"MLX","under":"ModelService","what":"through Frigate"},{"name":"Thread, in AII","under":"ThreadService","what":"the index every Rao app shares"},{"name":"Sewn, in AII","under":"AccountService","what":"sign-in and the account's tokens"}]}
         """#.utf8))
-        let spec = PlateCompose.spec(plan, graph: graph)
+        // `PLATE_PLAN=<plan.json>` replays a plan a model wrote (PLATE_HTML keeps each round's).
+        let replayed = try ProcessInfo.processInfo.environment["PLATE_PLAN"].map { try JSONDecoder().decode(PlatePlan.self, from: Data(contentsOf: URL(fileURLWithPath: $0))) }
+        let spec = PlateCompose.spec(replayed ?? plan, graph: graph)
         let folder = try Fixture.folder()
         let specURL = try Fixture.write(spec, to: folder, name: "composed.plate.json")
         let answer = try await AnyAgentPackage(PlateAgent.self).perform(Data(#"{"spec": "\#(specURL.path)", "output": "composed.png", "directory": "\#(folder.path)"}"#.utf8))
@@ -134,6 +136,10 @@ final class PlateComposeTests: XCTestCase {
             try FileManager.default.copyItem(atPath: result.path, toPath: out)
         }
         print("composed:", spec.nodes.count, "boxes", spec.edges.count, "arrows · findings:", result.findings)
+        guard replayed == nil else {
+            for node in spec.nodes { print("  node", node.lane, node.name, node.kind?.rawValue ?? "", node.under ?? "") }
+            return
+        }
         XCTAssertEqual(spec.lanes.map(\.name), ["the front ends", "the root", "a turn", "the project", "the machine"])
         XCTAssertEqual(spec.nodes.filter { $0.lane == "front" }.map(\.name), ["craft", "Craft.app", "CraftAppRoot", "EnvironmentService"])
         XCTAssertTrue(spec.nodes.contains { $0.name == "WatchService" && $0.lane == "project" }, "the part the plan left out sits by the part it works with most")

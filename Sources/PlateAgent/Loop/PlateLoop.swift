@@ -68,18 +68,19 @@ struct PlateLoop: Sendable {
             last = round
             let normal = spec.normalized()
             let checked = normal.check()
-            let drawn = PlateLayout.pruned(PlateOrder.ordered(normal.clamped()))
-            let grid = PlateGrid.make(drawn)
-            let measures = try await context.compute.measures(drawn, grid: grid)
-            let layout = PlateLayout.make(drawn, grid: grid, measures: measures)
-            let html = layout.page(drawn, faces: try await context.compute.faces())
-            Self.keep(html, round: round, plan: plan)
-            let rendered = try await context.compute.render(html)
-            let found = checked + layout.findings + PlateMeasure.findings(rendered.raw, spec: drawn)
+            var drawn = PlateLayout.pruned(PlateLayout.cleared(PlateOrder.ordered(normal.clamped())))
+            var (rendered, found) = try await draw(drawn, checked: checked, round: round, plan: plan)
+            // What the package can fix itself it fixes before the model hears of it.
+            for _ in 0..<2 {
+                guard let tidied = Self.tidied(drawn, findings: found) else { break }
+                drawn = tidied
+                (rendered, found) = try await draw(drawn, checked: checked, round: round, plan: plan)
+            }
             yield(.measured(round: round, findings: found))
             host.note(found.isEmpty ? "round \(round): measured clean" : "round \(round): \(found.count) to fix — \(found[0].sentence)")
             if best == nil || found.count <= best!.findings.count { best = (drawn, rendered, found, round) }
-            guard !found.isEmpty, round < rounds, let model else { break }
+            // The model revises what its words decide; where a box sits and how an arrow runs are the layout's.
+            guard found.contains(where: { ![.crossing, .overlap].contains($0.kind) }), round < rounds, let model else { break }
             if let current = plan, let graph {
                 host.note("revising the plan")
                 guard let revised = try? await askPlan(model, system: PlateDraft.planReviseSystem, user: PlateDraft.revise(current, findings: found)),
@@ -96,6 +97,33 @@ struct PlateLoop: Sendable {
         }
         guard let best else { throw PlateError.render("no round drew") }
         return try write(best.spec, best.rendered, findings: best.findings, rounds: last, folder: folder)
+    }
+
+    /// One drawing of `drawn`: grid, measure, lay out, render, measure again.
+    private func draw(_ drawn: PlateSpec, checked: [PlateFinding], round: Int, plan: PlatePlan?) async throws -> (PlateRendered, [PlateFinding]) {
+        let grid = PlateGrid.make(drawn)
+        let measures = try await context.compute.measures(drawn, grid: grid)
+        let layout = PlateLayout.make(drawn, grid: grid, measures: measures)
+        let html = layout.page(drawn, faces: try await context.compute.faces())
+        Self.keep(html, round: round, plan: plan)
+        let rendered = try await context.compute.render(html)
+        return (rendered, checked + layout.findings + PlateMeasure.findings(rendered.raw, spec: drawn))
+    }
+
+    /// The drawn spec with what the package fixes itself fixed, or nil when nothing it found is its to fix: a label
+    /// drawn over a box or another label, on an arrow the walk does not number, is dropped; the arrow stays.
+    static func tidied(_ spec: PlateSpec, findings: [PlateFinding]) -> PlateSpec? {
+        var spec = spec
+        var changed = false
+        for finding in findings where finding.kind == .overlap {
+            for element in [finding.element, finding.other].compactMap({ $0 }) where element.hasPrefix("wire:") {
+                guard let n = Int(element.dropFirst(5)), spec.edges.indices.contains(n - 1), spec.edges[n - 1].number == nil,
+                      spec.edges[n - 1].label != nil else { continue }
+                spec.edges[n - 1].label = nil
+                changed = true
+            }
+        }
+        return changed ? spec : nil
     }
 
     private func askPlan(_ model: any AgentHostModel, system: String, user: String) async throws -> PlatePlan {

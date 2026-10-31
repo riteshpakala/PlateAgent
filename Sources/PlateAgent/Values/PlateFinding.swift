@@ -23,8 +23,10 @@ public struct PlateFinding: Codable, Sendable, Equatable {
     public var element: String
     public var numbers: [Int]
     public var sentence: String
+    /// The other element, when two are drawn over each other or an arrow runs through a box.
+    public var other: String?
 
-    public init(_ kind: Kind, _ element: String, numbers: [Int] = [], _ sentence: String) {
-        self.kind = kind; self.element = element; self.numbers = numbers; self.sentence = sentence
+    public init(_ kind: Kind, _ element: String, numbers: [Int] = [], _ sentence: String, other: String? = nil) {
+        self.kind = kind; self.element = element; self.numbers = numbers; self.sentence = sentence; self.other = other
     }
 }

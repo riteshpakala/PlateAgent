@@ -59,6 +59,7 @@ enum PlateCompose {
                         let (word, type) = agentParts(agent)
                         let agentID = unique(PlateLoose.slug(word), in: Set(ids.values))
                         ids[word] = agentID
+                        if let type, ids[type] == nil { ids[type] = agentID }
                         kinds[agentID] = .agent
                         spec.nodes.append(PlateNode(id: agentID, lane: lane.id, name: word, code: type, kind: .agent, under: id))
                     }
@@ -71,7 +72,9 @@ enum PlateCompose {
         }
         for external in plan.externals {
             let host = resolve(external.under)
-            guard let hostID = ids[host], let hostNode = spec.nodes.first(where: { $0.id == hostID }), ids[external.name] == nil else { continue }
+            // An agent is drawn under its part already: an external named for one (`Coder`, `WatchAgent`) is that agent.
+            let agent = ids.first { kinds[$0.value] == .agent && $0.key.lowercased() == external.name.lowercased() }
+            guard agent == nil, let hostID = ids[host], let hostNode = spec.nodes.first(where: { $0.id == hostID }), ids[external.name] == nil else { continue }
             let id = unique(PlateLoose.slug(external.name), in: Set(ids.values))
             ids[external.name] = id
             kinds[id] = .external

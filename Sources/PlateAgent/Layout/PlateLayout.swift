@@ -164,6 +164,36 @@ struct PlateLayout: Sendable {
         return layout
     }
 
+    /// The spec with a box an arrow is drawn through moved along its lane, when that clears it: the box swaps places
+    /// with another of its lane, and the swap is kept when fewer arrows cross a box. The frame's lanes (dial) and a box
+    /// that names its column stay. Laid out with reckoned heights, before WebKit measures.
+    static func cleared(_ spec: PlateSpec) -> PlateSpec {
+        func crossings(_ spec: PlateSpec) -> (count: Int, crossed: Set<String>) {
+            let grid = PlateGrid.make(spec)
+            let routes = make(spec, grid: grid, measures: .estimated(spec, grid: grid)).routes.filter { !$0.crossings.isEmpty }
+            return (routes.count, Set(routes.flatMap(\.crossings)))
+        }
+        var best = spec
+        var score = crossings(spec)
+        for _ in 0..<3 where score.count > 0 {
+            var improved = false
+            for id in score.crossed.sorted() {
+                guard let i = best.nodes.firstIndex(where: { $0.id == id }), best.nodes[i].under == nil, best.nodes[i].column == nil,
+                      best.lanes.first(where: { $0.id == best.nodes[i].lane })?.colour != .dial else { continue }
+                let lane = best.nodes[i].lane
+                for j in best.nodes.indices where j != i && best.nodes[j].lane == lane && best.nodes[j].under == nil && best.nodes[j].column == nil {
+                    var trial = best
+                    trial.nodes.swapAt(i, j)
+                    let next = crossings(trial)
+                    if next.count < score.count { best = trial; score = next; improved = true; break }
+                }
+                if improved { break }
+            }
+            if !improved { break }
+        }
+        return best
+    }
+
     /// The spec without the arrows the walk does not need that no route can draw clear of the boxes: an unnumbered
     /// arrow is the reader's aid, and one drawn through a box hurts more than it helps. Laid out with reckoned
     /// heights, before WebKit measures; a numbered arrow always stays, and a crossing it makes is a finding.
