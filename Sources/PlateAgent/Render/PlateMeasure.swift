@@ -70,7 +70,7 @@ enum PlateMeasure {
       }
       if (el.scrollHeight > el.clientHeight + 2) overflow.push({id: el.dataset.id, part: 'height', scroll: el.scrollHeight, client: el.clientHeight});
     }
-    const placed = [...document.querySelectorAll('[data-id]')].filter((el) => /^(node|wire|mark|lane):|^legend$/.test(el.dataset.id))
+    const placed = [...document.querySelectorAll('[data-id]')].filter((el) => /^(node|wire|mark|lane|lanenote):|^legend$/.test(el.dataset.id))
       .map((el) => ({id: el.dataset.id, ...rect(el)}));
     const overlaps = [];
     for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) {
@@ -138,6 +138,7 @@ enum PlateMeasure {
         switch parts[0] {
         case "node": return "box \(spec.node(parts[1])?.name ?? parts[1])"
         case "lane": return "the name of lane \(parts[1])"
+        case "lanenote": return "the note of lane \(parts[1])"
         case "wire", "mark":
             guard let index = Int(parts[1]), spec.edges.indices.contains(index - 1) else { return id }
             let edge = spec.edges[index - 1]

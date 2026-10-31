@@ -18,6 +18,7 @@ enum PlateLimits {
     static let duty = 110
     static let code = 56
     static let label = 36
+    static let laneNote = 140
     static let legend = 360
     static let tag = 140
 }

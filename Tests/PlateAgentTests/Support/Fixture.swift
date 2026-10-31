@@ -12,7 +12,8 @@ enum Fixture {
         tag: "every box is a service or an agent in Sources/CraftAgents, Sources/CraftRuntime and Sources/CraftApp",
         lanes: [
             PlateLane(id: "front", name: "the front ends", colour: .dial),
-            PlateLane(id: "root", name: "the root", colour: .dial),
+            PlateLane(id: "root", name: "the root", colour: .dial,
+                      note: "{dial:the handlers:} memory held » halt the turns · critical pressure » stop the workers · Thread down » the records"),
             PlateLane(id: "turn", name: "a turn", colour: .blue),
             PlateLane(id: "project", name: "the project", colour: .green, columns: 2),
             PlateLane(id: "machine", name: "the machine", colour: .orange, columns: 2, beside: true),

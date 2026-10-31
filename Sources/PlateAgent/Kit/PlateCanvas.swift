@@ -54,8 +54,8 @@ struct PlateCanvas {
                       + "font-family:\(PlatePalette.sans); font-weight:600; font-size:12px\">\(number)</div>")
     }
 
-    mutating func note(_ box: PlateBox, html: String, size: Double = 15) {
-        labels.append("<div class=\"note\" data-id=\"legend\" style=\"left:\(n(box.x))px; top:\(n(box.y))px; width:\(n(box.w))px; font-size:\(n(size))px; line-height:1.4\">\(html)</div>")
+    mutating func note(_ box: PlateBox, html: String, size: Double = 15, id: String = "legend") {
+        labels.append("<div class=\"note\" data-id=\"\(esc(id))\" style=\"left:\(n(box.x))px; top:\(n(box.y))px; width:\(n(box.w))px; font-size:\(n(size))px; line-height:1.4\">\(html)</div>")
     }
 
     func arrowhead(_ head: PlateRoute.Head, _ colour: PlateColour) -> String {

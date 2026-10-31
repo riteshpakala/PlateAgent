@@ -66,6 +66,7 @@ extension PlateSpec {
                                           "lane \(lane.id) holds \(count) boxes and fits \(PlateLimits.nodesPerLane): split it into two lanes, or draw fewer parts."))
             }
             if count == 0 { found.append(PlateFinding(.limit, "lane:\(lane.id)", "lane \(lane.id) has no boxes: put a box in it, or drop it.")) }
+            long(lane.note, PlateLimits.laneNote, "lane:\(lane.id)", "lane \(lane.id)'s note")
         }
         for node in nodes {
             if !laneIDs.contains(node.lane) {
@@ -116,7 +117,11 @@ extension PlateSpec {
         spec.heading = spec.heading?.cut(PlateLimits.heading)
         spec.legend = spec.legend?.cut(PlateLimits.legend)
         spec.tag = spec.tag?.cut(PlateLimits.tag)
-        spec.lanes = Array(spec.lanes.prefix(PlateLimits.lanes))
+        spec.lanes = Array(spec.lanes.prefix(PlateLimits.lanes)).map { lane in
+            var lane = lane
+            lane.note = lane.note?.cut(PlateLimits.laneNote)
+            return lane
+        }
         let laneIDs = spec.lanes.map(\.id)
         var perLane: [String: Int] = [:]
         spec.nodes = spec.nodes.compactMap { node in

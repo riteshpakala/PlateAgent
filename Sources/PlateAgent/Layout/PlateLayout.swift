@@ -29,6 +29,8 @@ struct PlateLayout: Sendable {
 
     var lanes: [Lane]
     var nodes: [Node]
+    /// Each lane's note, where it sits.
+    var notes: [(lane: String, box: PlateBox, text: String)] = []
     var routes: [PlateRoute]
     var legend: PlateBox?
     var card: PlateBox
@@ -41,6 +43,7 @@ struct PlateLayout: Sendable {
         // Each lane laid out on its own, from its top.
         var local: [String: PlateBox] = [:]
         var laneHeights = Array(repeating: 0.0, count: spec.lanes.count)
+        var laneNotes: [Int: (box: PlateBox, text: String)] = [:]
         for (index, _) in spec.lanes.enumerated() {
             let cells = grid.cells.filter { $0.value.lane == index }
             let gridIDs = cells.filter { $0.value.parent == nil }
@@ -76,7 +79,21 @@ struct PlateLayout: Sendable {
                 bottom = rowBottom
                 y = rowBottom + PlateGeometry.rowGap
             }
-            laneHeights[index] = (rows.isEmpty ? PlateGeometry.laneTop + 40 : bottom) + PlateGeometry.laneFoot
+            var foot = rows.isEmpty ? PlateGeometry.laneTop + 40 : bottom
+            // The lane's note: beside its boxes when the lane has room to their right, else under them.
+            if let note = spec.lanes[index].note {
+                let span = grid.lanes[index]
+                let right = local.filter { cells[$0.key] != nil }.map { $0.value.right }.max() ?? span.x
+                let room = span.x + span.w - PlateGeometry.laneSide - (right + PlateGeometry.columnGap)
+                let beside = room >= 260
+                let width = beside ? room : span.w - 2 * PlateGeometry.laneSide
+                let lines = max(1, ceil(Double(note.count) * 7.3 / max(width, 100)))
+                let box = beside ? PlateBox(x: right + PlateGeometry.columnGap, y: PlateGeometry.laneTop + 2, w: width, h: lines * 20)
+                    : PlateBox(x: span.x + PlateGeometry.laneSide, y: foot + 10, w: width, h: lines * 20)
+                laneNotes[index] = (box, note)
+                foot = max(foot, box.bottom)
+            }
+            laneHeights[index] = foot + PlateGeometry.laneFoot
         }
 
         // The lanes placed, the arrows routed; a lane an arrow runs under grows to hold it, and the two go again.
@@ -106,6 +123,9 @@ struct PlateLayout: Sendable {
             let colours = Dictionary(nodes.map { ($0.node.id, $0.colour) }, uniquingKeysWith: { a, _ in a })
             let routes = PlateRouter.routes(spec, boxes: boxes, lanes: laneOf, colours: colours)
             layout.lanes = spec.lanes.enumerated().map { Lane(lane: $1, box: laneBoxes[$0], labelRight: grid.lanes[$0].labelRight) }
+            layout.notes = laneNotes.sorted { $0.key < $1.key }.map { index, note in
+                (spec.lanes[index].id, note.box.shifted(dy: laneBoxes[index].y), note.text)
+            }
             layout.nodes = nodes
             layout.routes = routes
             // An arrow that runs under a lane's last row needs the lane's foot below it.
@@ -120,7 +140,7 @@ struct PlateLayout: Sendable {
             if !grew { break }
         }
 
-        let obstacles = layout.nodes.map { $0.box.inset(2) } + layout.lanes.map(\.labelBox)
+        let obstacles = layout.nodes.map { $0.box.inset(2) } + layout.lanes.map(\.labelBox) + layout.notes.map(\.box)
         PlateRouter.label(&layout.routes, spec, obstacles: obstacles)
 
         let lanesBottom = layout.lanes.map(\.box.bottom).max() ?? PlateGeometry.firstLane

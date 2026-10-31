@@ -21,6 +21,7 @@ extension PlateLayout {
             }
             if let wire = route.wire, let text = edge.label { canvas.wire(wire, text, route.colour, id: "wire:\(route.edge + 1)") }
         }
+        for note in notes { canvas.note(note.box, html: PlateHTML.legend(note.text), size: 14, id: "lanenote:" + note.lane) }
         if let legend { canvas.note(legend, html: PlateHTML.legend(spec.legendText), size: PlateGeometry.legendSize) }
         let svgHeight = card.bottom + 110
         let body = PlateKit.card(card, heading: spec.headingText, machine: spec.machine?.trimmed.nonEmpty)
