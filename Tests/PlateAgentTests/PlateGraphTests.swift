@@ -16,10 +16,12 @@ final class PlateGraphTests: XCTestCase {
                   "import Granite\nimport Engine\n/// Opens a session and runs its turns. More.\nstruct SessionService {\n    @Relay var models: ModelService\n}\n")
         try write("Sources/App/Services/SessionService/Reducers/SessionService.Send.swift", "extension SessionService {\n    // ModelService is named in a comment\n    func send() { models.center.load.send() ; TranscriptService.open() }\n}\n")
         try write("Sources/App/Services/SessionService/Reducers/SessionService.Open.swift", "extension SessionService {}\n")
-        try write("Sources/App/Services/TranscriptService/TranscriptService.swift", "struct TranscriptService {\n    @Agent(.merge) var coder: Coder.Agent\n    @Agent(.parallel(max: 4)) package var worker: Worker.Agent\n    static func open() {}\n}\n")
+        try write("Sources/Agents/Services/TranscriptService/TranscriptService.swift", "struct TranscriptService {\n    @Agent(.merge) var coder: Coder.Agent\n    @Agent(.parallel(max: 4)) package var worker: Worker.Agent\n    static func open() {}\n}\n")
         try write("Sources/App/Services/ModelService/ModelService.swift", "//  WHAT: The one model: install, memory.\nstruct ModelService {}\n")
         try write("Sources/App/Services/ProjectService/ProjectService.swift", "struct ProjectService {}\n")
         try write("Sources/App/Services/ProjectService/Models/ProjectFacts/ProjectFacts.swift", "struct ProjectFacts {}\n")
+        try write("Sources/Agents/Services/TranscriptService/TranscriptService+Center.swift", "extension TranscriptService {}\n")
+        try write("Sources/Agents/Services/LoggerHelper/LoggerHelper.swift", "struct LoggerHelper {}\n")
         try write("scripts/plates.py", "class Canvas:\n    s = 'SessionService ModelService'\n")
         try write("Sources/App/Root/AppRoot.swift", "final class AppRoot {\n    let sessions = SessionService()\n    let models = ModelService()\n}\n")
         try write("Tests/AppTests/RootTests.swift", "final class RootTests { let s = SessionService(); let m = ModelService() }\n")
@@ -31,6 +33,8 @@ final class PlateGraphTests: XCTestCase {
         let graph = PlateGraph.read([root.appendingPathComponent("Sources/App/Services")], root: root)
         XCTAssertEqual(graph.parts.map(\.name), ["ModelService", "ProjectService", "SessionService", "TranscriptService"],
                        "a model's folder inside a service is the service's")
+        XCTAssertEqual(graph.parts.filter(\.beside).map(\.name), ["TranscriptService"],
+                       "a service in another target the parts refer to joins them; a helper they never name does not")
         let session = try XCTUnwrap(graph.parts.first { $0.name == "SessionService" })
         XCTAssertEqual(session.path, "Sources/App/Services/SessionService")
         XCTAssertEqual(session.operations, ["Open", "Send"], "a reducer file is an operation")
@@ -52,7 +56,7 @@ final class PlateGraphTests: XCTestCase {
     func testCraftsServices() throws {
         guard let path = ProcessInfo.processInfo.environment["CRAFT_ROOT"] else { throw XCTSkip("set CRAFT_ROOT to read a Craft checkout") }
         let root = URL(fileURLWithPath: path)
-        let sources = ["Sources/CraftRuntime/Services", "Sources/CraftAgents/Services", "Sources/CraftApp/Services"].map { root.appendingPathComponent($0) }
+        let sources = [root.appendingPathComponent("Sources/CraftRuntime/Services")]
         let started = Date()
         let said = PlateGraph.read(sources, root: root).render()
         print(said)

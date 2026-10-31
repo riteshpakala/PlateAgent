@@ -15,6 +15,8 @@ struct PlateGraph: Sendable {
         var operations: [String] = []
         var agents: [String] = []
         var rank = 0
+        /// Not under the sources: a neighbour of the same kind the parts refer to (a service in another target).
+        var beside = false
     }
 
     struct Reference: Sendable, Equatable {
@@ -44,33 +46,48 @@ struct PlateGraph: Sendable {
 
     /// The graph of the code files under `sources`, with what starts them found anywhere else under `root`.
     static func read(_ sources: [URL], root: URL, maxScan: Int = 3_000) -> PlateGraph {
-        let files = sources.flatMap { codeFiles(under: $0) }
-        guard !files.isEmpty else { return PlateGraph() }
+        let sourceFiles = sources.flatMap { codeFiles(under: $0) }
+        guard !sourceFiles.isEmpty else { return PlateGraph() }
+        let languages = Set(sourceFiles.map { $0.pathExtension.lowercased() })
+        // The project in the sources' languages, read once: for the neighbours and for what starts the parts.
         var texts: [URL: String] = [:]
-        for file in files { texts[file] = try? String(contentsOf: file, encoding: .utf8) }
-        let declared = texts.mapValues(declaredTypes)
-        // Every type declared in a folder or below it.
-        var below: [String: Set<String>] = [:]
-        for (file, types) in declared {
-            var folder = file.deletingLastPathComponent()
-            while folder.path.count >= root.path.count {
-                below[folder.path, default: []].formUnion(types)
-                if folder.path == root.path { break }
-                folder = folder.deletingLastPathComponent()
-            }
+        for file in sourceFiles { texts[file] = try? String(contentsOf: file, encoding: .utf8) }
+        let inSources = Set(sourceFiles)
+        for file in codeFiles(under: root).prefix(maxScan) where !inSources.contains(file) && languages.contains(file.pathExtension.lowercased()) {
+            guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size < 300_000 else { continue }
+            texts[file] = try? String(contentsOf: file, encoding: .utf8)
         }
-        // Each file's part: the outermost folder named for a type declared in it (a service's folder, not the folder of
-        // a model inside it), else the file's own first type.
+        let files = Array(texts.keys)
+        let declared = texts.mapValues(declaredTypes)
+        // The types declared by the files directly in each folder.
+        var direct: [String: Set<String>] = [:]
+        for (file, types) in declared { direct[file.deletingLastPathComponent().path, default: []].formUnion(types) }
+        // Each file's part: the outermost folder named for a type a file directly in it declares (`SessionService/
+        // SessionService.swift`: a service's folder, not the folder of a model inside it, never a whole target), else
+        // the file's own first type.
         var partOf: [URL: (name: String, path: URL)] = [:]
         for file in files {
             var folder = file.deletingLastPathComponent()
             var found: (String, URL)?
             while folder.path.hasPrefix(root.path), folder.path != root.path {
-                if below[folder.path]?.contains(folder.lastPathComponent) == true { found = (folder.lastPathComponent, folder) }
+                if direct[folder.path]?.contains(folder.lastPathComponent) == true { found = (folder.lastPathComponent, folder) }
                 folder = folder.deletingLastPathComponent()
             }
-            if let found { partOf[file] = found } else if let first = declared[file]?.first { partOf[file] = (first, file) }
+            if let found { partOf[file] = found } else if inSources.contains(file), let first = declared[file]?.first { partOf[file] = (first, file) }
         }
+        // The parts are the sources'; a part elsewhere joins them as a neighbour when it is of their kind (the suffix
+        // most of them share: Service, Store, Controller) and they refer to it.
+        let own = Set(partOf.filter { inSources.contains($0.key) }.map(\.value.name))
+        let kind = dominantSuffix(Array(own))
+        var neighbours: Set<String> = []
+        if let kind {
+            let outside = Set(partOf.filter { !inSources.contains($0.key) }.map(\.value.name)).subtracting(own).filter { $0.hasSuffix(kind) && $0 != kind }
+            let ownText = partOf.filter { inSources.contains($0.key) }.compactMap { texts[$0.key] }.joined(separator: "\n")
+            for name in outside where ownText.range(of: "\\b\(NSRegularExpression.escapedPattern(for: name))\\b", options: .regularExpression) != nil {
+                neighbours.insert(name)
+            }
+        }
+        partOf = partOf.filter { inSources.contains($0.key) || neighbours.contains($0.value.name) }
         var graph = PlateGraph()
         var filesOf: [String: [URL]] = [:]
         var seen: [String: URL] = [:]
@@ -82,6 +99,7 @@ struct PlateGraph: Sendable {
         for name in names {
             let own = (filesOf[name] ?? []).sorted { $0.path < $1.path }
             var part = Part(name: name, path: relative(seen[name]!, to: root))
+            part.beside = neighbours.contains(name)
             let main = own.first { $0.deletingPathExtension().lastPathComponent == name } ?? own.first
             part.what = main.flatMap { texts[$0] }.flatMap { what(of: $0, type: name) }
             // A file named `<Part>.<Operation>` is one of its operations (a Granite reducer, a handler).
@@ -94,6 +112,13 @@ struct PlateGraph: Sendable {
             part.operations = Array(Set(operations)).sorted()
             part.agents = own.flatMap { agents(in: texts[$0] ?? "") }
             graph.parts.append(part)
+        }
+        // An operation most parts share is plumbing (every Granite service has `Set` and `Reply`), not what one does.
+        if graph.parts.count >= 3 {
+            var shared: [String: Int] = [:]
+            for part in graph.parts { for operation in Set(part.operations) { shared[operation, default: 0] += 1 } }
+            let plumbing = Set(shared.filter { Double($0.value) >= Double(graph.parts.count) * 0.75 }.keys)
+            for i in graph.parts.indices { graph.parts[i].operations.removeAll { plumbing.contains($0) } }
         }
         // Who refers to whom, by the other parts' names in each part's files.
         for from in names {
@@ -116,10 +141,9 @@ struct PlateGraph: Sendable {
             }
         }
         graph.rank()
-        graph.starters = starters(of: Set(names), root: root, excluding: Set(files), languages: Set(files.map { $0.pathExtension.lowercased() }),
-                                  maxScan: maxScan)
+        graph.starters = starters(of: Set(names), texts: texts.filter { partOf[$0.key] == nil }, root: root)
         var imports: [String: Int] = [:]
-        for text in texts.values {
+        for text in partOf.keys.compactMap({ texts[$0] }) {
             for line in text.components(separatedBy: .newlines) where line.hasPrefix("import ") {
                 let module = line.dropFirst(7).split(separator: " ").last.map(String.init) ?? ""
                 if !module.isEmpty, !common.contains(module) { imports[module, default: 0] += 1 }
@@ -144,27 +168,35 @@ struct PlateGraph: Sendable {
         for i in parts.indices { parts[i].rank = depth(parts[i].name, [parts[i].name]) }
     }
 
-    /// Files outside the sources, in the parts' own languages, that name two or more parts: what starts the parts.
-    static func starters(of parts: Set<String>, root: URL, excluding: Set<URL>, languages: Set<String>, maxScan: Int) -> [Starter] {
+    /// Files outside the parts, in the parts' own languages and never a test, that name two or more parts: what starts
+    /// the parts.
+    static func starters(of parts: Set<String>, texts: [URL: String], root: URL) -> [Starter] {
         guard !parts.isEmpty else { return [] }
-        var scanned = 0
         var found: [String: (path: String, parts: Set<String>)] = [:]
         let words = parts.map { ($0, try? NSRegularExpression(pattern: "\\b" + NSRegularExpression.escapedPattern(for: $0) + "\\b")) }
-        for file in codeFiles(under: root) where !excluding.contains(file) && languages.contains(file.pathExtension.lowercased()) {
-            scanned += 1
-            if scanned > maxScan { break }
-            guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size < 300_000,
-                  let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+        for (file, text) in texts {
             let range = NSRange(text.startIndex..., in: text)
             let named = Set(words.compactMap { name, regex in regex?.firstMatch(in: text, range: range) != nil ? name : nil })
             guard named.count >= 2 else { continue }
             let name = declaredTypes(text).first ?? file.deletingPathExtension().lastPathComponent
-            let key = name
-            found[key, default: (relative(file, to: root), [])].parts.formUnion(named)
+            found[name, default: (relative(file, to: root), [])].parts.formUnion(named)
         }
         return found.map { Starter(name: $0.key, path: $0.value.path, parts: $0.value.parts.sorted()) }
             .sorted { $0.parts.count == $1.parts.count ? $0.name < $1.name : $0.parts.count > $1.parts.count }
             .prefix(8).map { $0 }
+    }
+
+    /// The last word most of the parts' names end in (`SessionService`, `ModelService` → `Service`), when at least two
+    /// and half of them share it.
+    static func dominantSuffix(_ names: [String]) -> String? {
+        var counts: [String: Int] = [:]
+        for name in names {
+            guard let start = name.lastIndex(where: \.isUppercase), start != name.startIndex else { continue }
+            counts[String(name[start...]), default: 0] += 1
+        }
+        guard let best = counts.max(by: { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }),
+              best.value >= 2, Double(best.value) >= Double(names.count) / 2 else { return nil }
+        return best.key
     }
 
     // MARK: What the code says
@@ -249,7 +281,7 @@ struct PlateGraph: Sendable {
         guard !parts.isEmpty else { return "" }
         var out = ["## The parts, read off the code (rank: how many parts deep its references go; higher calls lower)"]
         for part in parts.sorted(by: { $0.rank == $1.rank ? $0.name < $1.name : $0.rank > $1.rank }) {
-            var line = "- \(part.name) · \(part.path) · rank \(part.rank)"
+            var line = "- \(part.name) · \(part.path) · rank \(part.rank)" + (part.beside ? " · beside the sources" : "")
             if !part.operations.isEmpty { line += " · operations: " + part.operations.joined(separator: " · ") }
             if !part.agents.isEmpty { line += " · agents: " + part.agents.joined(separator: ", ") }
             if let what = part.what, !what.isEmpty { line += "\n  " + what }
