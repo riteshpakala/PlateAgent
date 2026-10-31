@@ -1,13 +1,16 @@
 import Foundation
 
-/// The plate composed from the model's plan and the code's graph. Each part the plan places is drawn with its duty
-/// (the plan's, else the code's own line), its operations as its code line and its agents under it; what starts the
-/// parts stands as the front ends; the walk is numbered in order; and the other references among what is drawn are
-/// arrows too, labelled with what one part calls on the other.
+/// The plate composed from the model's plan and the code's graph. The front ends and the root come from the graph, in
+/// the top two lanes; the plan's lanes hold the parts below, and a part it left out goes beside the part it works with
+/// most. Each part is drawn with its duty (the plan's, else the code's own line), its operations as its code line and
+/// its agents under it; the walk is numbered in order; the other references among what is drawn are arrows too,
+/// labelled with what one part calls on the other; and the header is the plates' own, made of three words the plan
+/// gives (`header`).
 ///
 /// PIN: the plan says what; the graph says what is there. A box the plan names that the code does not have is drawn
 /// as the plan wrote it, and an arrow the walk names between two boxes is drawn whether or not the graph has it, so a
-/// starter can call the root; every other arrow is one the code has.
+/// starter can call the root; every other arrow is one the code has. What a plate's house style decides (the top
+/// lanes, the header's form, the legend) is never left to the model, which copies the example it is shown.
 enum PlateCompose {
     static func spec(_ plan: PlatePlan, graph: PlateGraph) -> PlateSpec {
         let parts = Dictionary(graph.parts.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
@@ -21,11 +24,12 @@ enum PlateCompose {
             let prefixed = known.filter { $0.lowercased().hasPrefix(lower) }
             return prefixed.count == 1 ? prefixed[0] : name
         }
+        let lanes = Self.lanes(plan, graph: graph, resolve: resolve)
         // How many mono characters a box's code line holds, and how many a duty's two lines do: a lane beside another
         // is half as wide and sets its boxes two by two.
         func half(_ lane: PlatePlan.Lane) -> Bool {
-            guard let index = plan.lanes.firstIndex(of: lane) else { return false }
-            return lane.beside == true || (index + 1 < plan.lanes.count && plan.lanes[index + 1].beside == true)
+            guard let index = lanes.firstIndex(of: lane) else { return false }
+            return lane.beside == true || (index + 1 < lanes.count && lanes[index + 1].beside == true)
         }
         func width(of lane: PlatePlan.Lane) -> Int { half(lane) ? 32 : (lane.boxes.count >= 4 ? 36 : 44) }
         func dutyLimit(of lane: PlatePlan.Lane) -> Int {
@@ -33,18 +37,18 @@ enum PlateCompose {
             let line = Int(((half(lane) ? 640.0 : 1330.0) / across - 40) / 7.4)
             return min(110, 2 * line - 4)
         }
-        var spec = PlateSpec(caption: plan.caption, title: plan.title, subtitle: plan.subtitle, heading: plan.heading, machine: plan.machine,
-                             tag: plan.tag, legend: plan.legend)
+        var spec = PlateSpec(caption: "", title: "", subtitle: "")
         var ids: [String: String] = [:]   // a name, as the plan or the graph says it → its box's id
         var kinds: [String: PlateNodeKind] = [:]
+        // The plan's duty, unless it echoes the worked example; else the code's own line.
         func duty(_ name: String, _ fallback: String?, in lane: PlatePlan.Lane) -> String? {
-            let planned = plan.duties[name] ?? plan.duties.first { resolve($0.key) == name }?.value
+            let planned = (plan.duties[name] ?? plan.duties.first { resolve($0.key) == name }?.value).flatMap { PlateDraft.echoes($0) ? nil : $0 }
             return (planned ?? fallback.map(plain)).map { sentence($0, limit: dutyLimit(of: lane)) }
         }
-        for lane in plan.lanes {
-            spec.lanes.append(PlateLane(id: lane.id, name: lane.name, colour: lane.colour, beside: lane.beside, note: lane.note))
-            for raw in lane.boxes {
-                let name = resolve(raw)
+        for lane in lanes {
+            spec.lanes.append(PlateLane(id: lane.id, name: lane.name, colour: lane.colour, beside: lane.beside,
+                                        note: lane.note.flatMap { PlateDraft.echoes($0) ? nil : $0 }))
+            for name in lane.boxes {
                 guard ids[name] == nil else { continue }
                 let id = unique(PlateLoose.slug(name), in: Set(ids.values))
                 ids[name] = id
@@ -56,7 +60,7 @@ enum PlateCompose {
                         let agentID = unique(PlateLoose.slug(word), in: Set(ids.values))
                         ids[word] = agentID
                         kinds[agentID] = .agent
-                        spec.nodes.append(PlateNode(id: agentID, lane: lane.id, name: word, code: plan.duties[word] ?? type, kind: .agent, under: id))
+                        spec.nodes.append(PlateNode(id: agentID, lane: lane.id, name: word, code: type, kind: .agent, under: id))
                     }
                 } else if let starter = starters[name] {
                     spec.nodes.append(PlateNode(id: id, lane: lane.id, name: name, duty: duty(name, starter.what, in: lane), code: folder(of: starter.path)))
@@ -73,7 +77,7 @@ enum PlateCompose {
             kinds[id] = .external
             // In the row beside its part while the lane has room (a full lane of four, or a lane beside another, hangs it
             // under the part).
-            let lanePlan = plan.lanes.first { $0.id == hostNode.lane }
+            let lanePlan = lanes.first { $0.id == hostNode.lane }
             let inRow = spec.nodes.filter { $0.lane == hostNode.lane && $0.under == nil }.count
             let beside = lanePlan.map { !half($0) } == true && inRow < 4 && hostNode.under == nil
             spec.nodes.append(PlateNode(id: id, lane: hostNode.lane, name: external.name, code: external.what.map { sentence($0, limit: 40) },
@@ -88,9 +92,9 @@ enum PlateCompose {
             if kinds[a] == .external || kinds[b] == .external { return .dashedGrey }
             return .solid
         }
-        let laneOrder = Dictionary(plan.lanes.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let laneOrder = Dictionary(lanes.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
         func lane(of id: String) -> Int? { spec.nodes.first { $0.id == id }.flatMap { laneOrder[$0.lane] } }
-        func colour(of id: String) -> PlateColour? { spec.nodes.first { $0.id == id }.flatMap { node in plan.lanes.first { $0.id == node.lane }?.colour } }
+        func colour(of id: String) -> PlateColour? { spec.nodes.first { $0.id == id }.flatMap { node in lanes.first { $0.id == node.lane }?.colour } }
         var number = 0
         var lastTarget: String?
         for step in plan.walk {
@@ -106,7 +110,8 @@ enum PlateCompose {
                                         style: style(a, b), colour: gold ? .gold : nil, both: kinds[b] == .external ? true : nil))
         }
         for node in spec.nodes where node.kind == .agent || node.kind == .external {
-            guard let host = node.under, !drawn.contains(key(host, node.id)) else { continue }
+            guard let host = node.under ?? plan.externals.first(where: { $0.name == node.name }).flatMap({ ids[resolve($0.under)] }),
+                  !drawn.contains(key(host, node.id)) else { continue }
             drawn.insert(key(host, node.id))
             spec.edges.append(PlateEdge(from: host, to: node.id, style: style(host, node.id), both: node.kind == .external ? true : nil))
         }
@@ -135,8 +140,127 @@ enum PlateCompose {
                 spec.edges.append(PlateEdge(from: a, to: b, colour: .gold))
             }
         }
+        header(&spec, plan: plan, graph: graph, names: Array(ids.keys))
         return spec
     }
+
+    // MARK: Lanes
+
+    /// The lanes: the front ends and the root from the graph, then the plan's lanes of parts, each part once, a part the
+    /// plan left out beside the part it works with most, at most six lanes in all.
+    static func lanes(_ plan: PlatePlan, graph: PlateGraph, resolve: (String) -> String) -> [PlatePlan.Lane] {
+        var top: [PlatePlan.Lane] = []
+        var reserved: Set<String> = []
+        if let root = graph.root {
+            let entries = graph.starters.filter { $0.role == .entry }
+            let ordered = entries.filter { !$0.name.hasSuffix(".app") } + entries.filter { $0.name.hasSuffix(".app") }
+            let roots = graph.starters.filter { $0.role == .file && $0.name != root && !$0.reaches.isEmpty }
+            let held = graph.starters.filter { $0.role == .held }
+            let front = Array((ordered + roots + held).map(\.name).prefix(4))
+            let note = plan.rootNote ?? plan.lanes.first { $0.boxes.map(resolve).contains(root) }?.note
+            if !front.isEmpty { top.append(PlatePlan.Lane(id: "front", name: "the front ends", colour: .dial, boxes: front)) }
+            top.append(PlatePlan.Lane(id: "root", name: "the root", colour: .dial, note: note, boxes: [root]))
+            reserved = Set(front + [root])
+        }
+        let partNames = graph.parts.map(\.name)
+        var placed = reserved
+        var lanes: [PlatePlan.Lane] = []
+        var loose: [String] = []
+        for var lane in plan.lanes {
+            let named = lane.boxes.map(resolve)
+            let boxes = named.filter { !placed.contains($0) }
+            // A lane the plan gave a front end or the root is the top lanes': its parts are placed again below.
+            if named.contains(where: reserved.contains) {
+                loose += boxes.filter { partNames.contains($0) && !loose.contains($0) }
+                continue
+            }
+            guard !boxes.isEmpty else { continue }
+            lane.boxes = boxes
+            placed.formUnion(boxes)
+            if (!top.isEmpty && (lane.id == "front" || lane.id == "root")) || lanes.contains(where: { $0.id == lane.id }) { lane.id += "-\(lanes.count + 1)" }
+            lanes.append(lane)
+        }
+        // Every part has a lane: one the plan left out goes where the part it refers to most, or is referred to by, sits.
+        let byRank = graph.parts.sorted { $0.rank > $1.rank }.map(\.name)
+        let missing = loose.filter { !placed.contains($0) } + byRank.filter { !placed.contains($0) && !loose.contains($0) }
+        for name in missing {
+            let partners = graph.references.filter { $0.from == name || $0.to == name }.sorted { $0.count > $1.count }
+                .map { $0.from == name ? $0.to : $0.from }
+            let room = { (i: Int) in lanes[i].boxes.count < 4 }
+            if let i = partners.lazy.compactMap({ partner in lanes.firstIndex { $0.boxes.contains(partner) } }).first(where: room)
+                ?? lanes.indices.last(where: room) {
+                lanes[i].boxes.append(name)
+            } else {
+                lanes.append(PlatePlan.Lane(id: "parts-\(lanes.count + 1)", name: "the rest", colour: .violet, boxes: [name]))
+            }
+            placed.insert(name)
+        }
+        // At most six lanes: the two smallest neighbours below the walk's first lane join.
+        while top.count + lanes.count > PlateLimits.lanes {
+            let pairs = lanes.indices.dropFirst().dropLast().map { ($0, lanes[$0].boxes.count + lanes[$0 + 1].boxes.count) }.filter { $0.1 <= 8 }
+            guard let (i, _) = pairs.min(by: { $0.1 < $1.1 }) else { break }
+            lanes[i].boxes += lanes[i + 1].boxes
+            lanes.remove(at: i + 1)
+        }
+        // A lane of parts is never dial, the frame's colour; the walk's lane opens the parts on its own; and the last two,
+        // when each holds two to four, sit beside each other.
+        let palette: [PlateColour] = [.blue, .green, .orange, .violet, .red]
+        for i in lanes.indices where lanes[i].colour == .dial && lanes[i].boxes.allSatisfy(partNames.contains) {
+            lanes[i].colour = palette.first { colour in !lanes.contains { $0.colour == colour } } ?? .violet
+        }
+        for i in lanes.indices where lanes[i].beside == true && (i == 0 || lanes[i - 1].beside == true) { lanes[i].beside = nil }
+        if lanes.count >= 3, (2...4).contains(lanes[lanes.count - 2].boxes.count), (2...4).contains(lanes[lanes.count - 1].boxes.count),
+           lanes[lanes.count - 2].beside != true {
+            lanes[lanes.count - 1].beside = true
+        }
+        return top + lanes
+    }
+
+    // MARK: Header
+
+    /// The plates' own header and legend, made of the plan's words: what walks (`unit`), where it starts and what it
+    /// leaves (`start`, `end`), what the plate shows (`subject`), and the code's kind of part. "One turn, every
+    /// service"; "from the ask to the records: what each service is responsible for, in the order a turn passes through
+    /// it". A header the plan writes itself is kept unless it echoes the worked example.
+    static func header(_ spec: inout PlateSpec, plan: PlatePlan, graph: PlateGraph, names: [String]) {
+        func word(_ text: String?, _ fallback: String) -> String {
+            var said = (text ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            for article in ["a ", "an ", "the ", "one "] where said.hasPrefix(article) { said = String(said.dropFirst(article.count)) }
+            return said.isEmpty || said.count > 24 ? fallback : said
+        }
+        func article(_ word: String) -> String { "aeiou".contains(word.first ?? "x") ? "an" : "a" }
+        func own(_ text: String?) -> String? { text.flatMap { $0.isEmpty || PlateDraft.echoes($0) ? nil : $0 } }
+        let kind = (graph.kind ?? "part").lowercased()
+        let kinds = kind.hasSuffix("s") ? kind + "es" : kind.hasSuffix("y") ? String(kind.dropLast()) + "ies" : kind + "s"
+        let unit = word(plan.unit, "request"), start = word(plan.start, "start"), end = word(plan.end, "end")
+        let subject = word(plan.subject, "flow")
+        let project = graph.project ?? "the project"
+        spec.caption = own(plan.caption) ?? "RAO STUDIOS · \(project.uppercased()) · THE \(subject.uppercased())"
+        spec.title = own(plan.title) ?? "One \(unit), every \(kind)"
+        spec.subtitle = own(plan.subtitle) ?? "from the \(start) to the \(end): what each \(kind) is responsible for, in the order \(article(unit)) \(unit) passes through it"
+        spec.heading = own(plan.heading) ?? "\(article(unit).capitalized) \(unit), through the \(kinds)"
+        spec.machine = own(plan.machine) ?? "ONE \(start.uppercased()), END TO END"
+        // Where every box lives: the top folders of the parts and the front ends drawn.
+        let paths = names.compactMap { name in graph.parts.first { $0.name == name }?.path ?? graph.starters.first { $0.name == name }?.path }
+        var folders: [String] = []
+        for path in paths {
+            let components = path.split(separator: "/")
+            let top = components.first == "Sources" && components.count > 1 ? components.prefix(2).joined(separator: "/") : String(components.first ?? "")
+            if !top.isEmpty, !folders.contains(top) { folders.append(top) }
+        }
+        folders.sort()
+        let listed = folders.count > 1 ? folders.dropLast().joined(separator: ", ") + " and " + folders.last! : folders.first ?? project
+        let agents = spec.nodes.contains { $0.kind == .agent }
+        spec.tag = own(plan.tag) ?? "every box is \(article(kind)) \(kind)\(agents ? " or an agent" : "") in \(listed)"
+        let granite = graph.conformance?.hasPrefix("Granite") == true
+        var legend = "Each box is \(article((graph.conformance ?? kind).lowercased())) **\(graph.conformance ?? kind)**; its line says what it is responsible for, and nothing else is. "
+            + "Solid arrows are \(granite ? "dispatches down the relay graph" : "calls")"
+        if spec.edges.contains(where: { $0.style == .dashedGold }) { legend += "; {gold:dashed gold} is an agent's run and what it writes" }
+        if spec.edges.contains(where: { $0.style == .dashedGrey }) { legend += "; dashed grey is a process across a wire" }
+        spec.legend = own(plan.legend) ?? legend + ". The numbers walk one \(unit)."
+    }
+
+    // MARK: Words
 
     /// What `from` calls on `to`, two words at most: the calls that are `to`'s own operations first.
     static func label(_ graph: PlateGraph, _ from: String, _ to: String, _ target: PlateGraph.Part?) -> String? {

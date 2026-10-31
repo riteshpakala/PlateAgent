@@ -47,6 +47,11 @@ struct PlateGraph: Sendable {
     /// The starter that holds the parts: it names three in four of them, and the most.
     var root: String?
     var imports: [(name: String, count: Int)] = []
+    /// The word most parts' names end in (`Service`), what most of them conform to (`GraniteService`), and the project's
+    /// name (its manifest's, else its folder's): what the plate's header and legend are made of.
+    var kind: String?
+    var conformance: String?
+    var project: String?
 
     static let skipped: Set<String> = [".build", "node_modules", "DerivedData", "Pods", "dist", "build", ".next", "vendor", "__pycache__", ".git",
                                        ".swiftpm", "Tests", "tests", "test", "__tests__", "Evals", "evals", "fixtures"]
@@ -169,6 +174,19 @@ struct PlateGraph: Sendable {
         }
         graph.root = holders.max { (namedBy($0), $0.parts.count) < (namedBy($1), $1.parts.count) }?.name
         graph.front(texts: texts, outside: outside, kind: kind, root: root)
+        graph.kind = kind
+        var conforms: [String: Int] = [:]
+        for part in graph.parts {
+            for file in filesOf[part.name] ?? [] {
+                guard let text = texts[file], let match = text.firstMatch(of: try! Regex("(?:struct|class|actor|enum)\\s+\(NSRegularExpression.escapedPattern(for: part.name))\\s*:\\s*(\\w+)")),
+                      let name = match.output[1].substring else { continue }
+                conforms[String(name), default: 0] += 1
+                break
+            }
+        }
+        graph.conformance = conforms.filter { $0.value * 2 >= graph.parts.count }.max { $0.value < $1.value }?.key
+        let manifest = (try? String(contentsOf: root.appendingPathComponent("Package.swift"), encoding: .utf8)) ?? ""
+        graph.project = manifest.firstMatch(of: #/Package\(\s*name:\s*"([^"]+)"/#).map { String($0.1) } ?? root.lastPathComponent
         // What only the root calls is its wiring at boot (`connect`): last, after what the part is for.
         if let holder = graph.root, let starter = graph.starters.first(where: { $0.name == holder }) {
             let said = text(of: starter, in: texts, root: root)
@@ -290,6 +308,11 @@ struct PlateGraph: Sendable {
             var what = entryText.firstMatch(of: #/abstract:\s*"([^"]+)"/#).map { String($0.1) }
             if let said = what, let dash = said.range(of: " — "), said[..<dash.lowerBound].trimmingCharacters(in: .whitespaces) == product {
                 what = String(said[dash.upperBound...])
+            }
+            // A command line's subcommands say what it is for: `craft` runs, makes, lists models and agents.
+            if let said = what, let list = entryText.firstMatch(of: #/subcommands:\s*\[([^\]]+)\]/#) {
+                let commands = String(list.1).matches(of: #/(\w+?)Command\.self/#).map { String($0.1).lowercased() }
+                if !commands.isEmpty { what = said + ": " + commands.prefix(6).joined(separator: ", ") }
             }
             if what == nil, !entryText.isEmpty {
                 let comment = entryText.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }

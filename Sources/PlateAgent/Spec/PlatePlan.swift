@@ -75,6 +75,15 @@ public struct PlatePlan: Codable, Sendable, Equatable {
         }
     }
 
+    /// What one pass of the walk carries ("turn", "request"), where it starts ("ask") and what it leaves ("records"),
+    /// and what the plate shows ("flow"): the header is made of them (`PlateCompose.header`).
+    public var unit: String?
+    public var start: String?
+    public var end: String?
+    public var subject: String?
+    /// The root's lane note: what the root does that no box says.
+    public var rootNote: String?
+    /// The header as written, when a plan writes it; else made of the words above.
     public var caption: String
     public var title: String
     public var subtitle: String
@@ -88,17 +97,23 @@ public struct PlatePlan: Codable, Sendable, Equatable {
     public var walk: [Step]
     public var externals: [External]
 
-    public init(caption: String = "", title: String = "", subtitle: String = "", heading: String? = nil, machine: String? = nil,
+    public init(unit: String? = nil, start: String? = nil, end: String? = nil, subject: String? = nil, rootNote: String? = nil,
+                caption: String = "", title: String = "", subtitle: String = "", heading: String? = nil, machine: String? = nil,
                 tag: String? = nil, legend: String? = nil, lanes: [Lane] = [], duties: [String: String] = [:], walk: [Step] = [],
                 externals: [External] = []) {
+        self.unit = unit; self.start = start; self.end = end; self.subject = subject; self.rootNote = rootNote
         self.caption = caption; self.title = title; self.subtitle = subtitle; self.heading = heading; self.machine = machine
         self.tag = tag; self.legend = legend; self.lanes = lanes; self.duties = duties; self.walk = walk; self.externals = externals
     }
 
-    enum CodingKeys: String, CodingKey { case caption, title, subtitle, heading, machine, tag, legend, lanes, duties, walk, externals }
+    enum CodingKeys: String, CodingKey {
+        case unit, start, end, subject, rootNote, caption, title, subtitle, heading, machine, tag, legend, lanes, duties, walk, externals
+    }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        func word(_ key: CodingKeys) -> String? { PlateLoose.string(c, key).map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 } }
+        unit = word(.unit); start = word(.start); end = word(.end); subject = word(.subject); rootNote = word(.rootNote)
         caption = PlateLoose.string(c, .caption) ?? ""
         title = PlateLoose.string(c, .title) ?? ""
         subtitle = PlateLoose.string(c, .subtitle) ?? ""

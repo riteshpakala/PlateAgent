@@ -57,35 +57,53 @@ enum PlateDraft {
 
     /// What the model is told when the code's graph is known: plan, and the kit composes.
     static let planRules = """
-    You plan one editorial plate of a software system: which of its parts go in which lane, a line of duty for each, the walk the numbers take, and the words. The kit composes the plate from your plan and the code's own graph (each box's code line, its agents, the arrows the code has), so you write only what the graph cannot say. Answer with the plan, one compact JSON object.
+    You plan one editorial plate of a software system. The kit draws it from the code's own graph: the front ends and the root in the top two lanes, each box's code line, its agents, the arrows the code has, the header and the legend. You decide what the graph cannot: how the parts group into lanes, a line of duty for each box, the walk the numbers take, what is across a wire, and three words for the header. Answer with the plan, one compact JSON object.
 
-    - Lanes run top to bottom in the order the thing flows. Three to six lanes, each named for what its boxes are, each "dial" or one of "blue", "green", "orange", "violet", "red":
-      1. "the front ends", dial: from "The front ends and the root", what a person runs, then the app's root and the service it holds, in that order.
-      2. "the root", dial: the root alone, with a `note`: one line of what it does that no box says (its handlers, what it boots), as "{dial:on boot:} the stores open » the cache warms".
-      3. Then the parts, highest rank first: a lane for the parts the walk passes through first (blue, named for the walk: "a request"), then the rest by what they work on. The lowest rank may split into two lanes `beside` each other (green and orange: "the data", "the outside").
-    - `boxes` are names exactly as the graph writes them. Every part goes in a lane; at most four boxes in a lane. A part's agents are drawn under it for you: never list them as boxes. Pages and tools are boxes only when the request is about them.
-    - `duties`: for EVERY box, one line of what it is responsible for, in your own plain words, lowercase, at most 70 characters, from its line in the graph: what it holds, then what it does ("every post and its revisions, by slug", "rendered pages, kept until a post changes"). Never the box's own name, never "a service that".
-    - `walk` is the one path the person asked about, in the order it happens, six to twelve steps, each from a box to a box, an agent or an external. It starts where a person starts it: each front end into the root (two ways into one box share a number), then down through the root to the part that does the work, out to its agents and what they reach, then to what the work leaves behind. Each step is one of the graph's references, a front end's arrow, a part running one of its agents, or a part reaching an external. Give each a `label`: one to three words of code joined by " · " ("route", "render · page", "read").
-    - `externals`: the engines, servers and stores the parts reach across a wire, read off the imports and the parts' lines (an engine under the part that runs it, a database under the part that keeps it), each `under` that part with a few words of `what`.
-    - `caption` is "RAO STUDIOS · <PROJECT> · THE <WHAT>". `title` is a short editorial sentence with a turn of phrase, never a label (at most 30 characters): "One request, every layer", "One build, every cache", not "Service pattern flow". `subtitle` is the thesis in one line (at most 100 characters), as the example's. `heading` names the walk ("A request, through the layers"). `machine` is two to five words in capitals ("ONE CLICK, END TO END"). `tag` says where every box lives in the code. `legend` says what a box is, what each stroke means and what the numbers walk; `**term**` and `{gold:dashed gold}` are allowed.
-    - Use only names the graph has, or what the person asked for: never a part the code does not have.
+    - `unit` is what one pass of the walk carries, one word as the code says it (what a person sends in and the parts pass along). `start` is where it starts, one or two words (what the person does first); `end` is what it leaves behind, one or two words. The header reads "One <unit>, every <kind of part>" and "from the <start> to the <end>". `subject` is what the plate shows, one word: "flow" when the person asks for a flow.
+    - `lanes` hold the parts, below the front ends and the root, which are drawn for you. First a lane for the parts the walk passes through first (blue, named "a <unit>"), then the rest by the scope they work on, narrower first: what one project, document or user owns (green), then what the whole machine or app shares (orange). Each lane is named for what its boxes are, "the <noun>". Two to four lanes; at most four boxes in a lane.
+    - `boxes` are the parts' names exactly as the graph writes them. Every part goes in a lane. A part's agents are drawn under it for you: never list them as boxes.
+    - `duties`: for EVERY box (the front ends and the root too), one line of what it is responsible for, in your own plain words, lowercase, at most 70 characters, read off its line in the graph: what it holds, then what it does. Never the box's own name, never "a service that".
+    - `rootNote`: one line on what the root does that no box says, read off its line in the graph (the handlers it installs and what each answers), as "{dial:<what they are>:} <event> » <answer> · <event> » <answer>".
+    - `walk` is the one path the person asked about, in the order it happens, six to twelve steps, each from a box to a box, an agent or an external. It starts where a person starts it: each front end into the root (two ways into one box share a number), then down through the root to the part that does the work, out to its agents and what they reach, then to what the work leaves behind. Each step is one of the graph's references, a front end's arrow, a part running one of its agents, or a part reaching an external. Give each a `label`: one to three words of code joined by " · ", what the shown line calls.
+    - `externals`: the engines, servers and stores the parts reach across a wire, read off the imports and the parts' lines, each `under` the part that reaches it, with a few words of `what`.
+    - Use only names the graph has. The example below is another system: never its names, its words or its duties.
     """
 
     /// A plan for another system: what the model copies the shape of.
     static let planExample = #"""
-    {"caption":"RAO STUDIOS · ATELIER · THE REQUEST","title":"One request, every layer","subtitle":"from the click to the stored post: what each layer owns, in the order a request passes through it","heading":"A request, through the layers","machine":"ONE CLICK, END TO END","tag":"every box is a module in Sources/AtelierServer and Sources/AtelierApp",
-     "lanes":[{"id":"front","name":"the front ends","colour":"dial","boxes":["atelier","Atelier.app","AtelierAppRoot","ThemeService"]},
-              {"id":"root","name":"the root","colour":"dial","boxes":["ServerRoot"],"note":"{dial:on boot:} the stores open » the cache warms · a crash » the queue drains"},
-              {"id":"request","name":"a request","colour":"blue","boxes":["RequestService","RenderService","CacheService"]},
-              {"id":"data","name":"the data","colour":"green","boxes":["PostStore","SearchService"]},
-              {"id":"outside","name":"the outside","colour":"orange","beside":true,"boxes":["MailService","BillingService"]}],
-     "duties":{"atelier":"the command line: serve, migrate, publish","Atelier.app":"a window per page; a page reads the services it shows","AtelierAppRoot":"the app's root: windows, menus, the server it starts","ThemeService":"light or dark, the accent, this Mac's fonts","ServerRoot":"boots the services, holds a relay to each, installs two handlers","RequestService":"routes a request, checks the session, answers or hands it on","RenderService":"turns a post into a page, with its summary","CacheService":"rendered pages, kept until a post changes","PostStore":"every post and its revisions, by slug","SearchService":"the posts' words, indexed as they are written","MailService":"the outbox: digests and replies, sent in order","BillingService":"plans, invoices, the card on file"},
-     "walk":[{"from":"atelier","to":"ServerRoot","label":"serve"},{"from":"AtelierAppRoot","to":"ServerRoot","label":"boot · open"},{"from":"ServerRoot","to":"RequestService","label":"route"},{"from":"RequestService","to":"RenderService","label":"render · page"},{"from":"RenderService","to":"summarize","label":"run"},{"from":"RenderService","to":"PostStore","label":"read"},{"from":"PostStore","to":"Postgres","label":"query"},{"from":"PostStore","to":"SearchService","label":"index"},{"from":"RenderService","to":"CacheService","label":"keep"}],
-     "externals":[{"name":"Postgres","under":"PostStore","what":"the posts' rows"},{"name":"Stripe","under":"BillingService","what":"cards and payouts"}],
-     "legend":"Each box is a **service**; its line says what it owns, and nothing else does. Solid arrows are calls down the relay graph; {gold:dashed gold} is a model's run and what it writes back; dashed grey is a process across a wire. The numbers walk one request."}
+    {"subject":"flow","unit":"order","start":"tap","end":"receipt",
+     "rootNote":"{dial:its watchers:} stock low » hold new orders · a refund » reopen the order",
+     "lanes":[{"id":"order","name":"an order","colour":"blue","boxes":["CartService","OrderService","PaymentService"]},
+              {"id":"store","name":"the store","colour":"green","boxes":["StockService","CatalogService","SearchService"]},
+              {"id":"shared","name":"the chain","colour":"orange","beside":true,"boxes":["MailService","BillingService"]}],
+     "duties":{"shop":"the till in a terminal: sell, refund, count","Shop.app":"a window per register; a page reads what it shows","ShopAppRoot":"the app's own root: windows, menus, the runtime it starts","ThemeService":"light or dark, the accent, this Mac's fonts","ShopRoot":"starts the services, keeps a relay to each, installs two watchers","CartService":"what a customer picked, priced as they pick it","OrderService":"turns a cart into an order and walks it to paid","PaymentService":"charges the card and says whether it cleared","StockService":"what is on the shelf and what is promised","CatalogService":"every product, its price and its photos","SearchService":"the products' words, indexed as they change","MailService":"the outbox: receipts and notices, sent in order","BillingService":"invoices, refunds, the card on file"},
+     "walk":[{"from":"shop","to":"ShopRoot","label":"sell"},{"from":"ShopAppRoot","to":"ShopRoot","label":"boot · open"},{"from":"ShopRoot","to":"CartService","label":"route"},{"from":"CartService","to":"OrderService","label":"place"},{"from":"OrderService","to":"PaymentService","label":"charge"},{"from":"PaymentService","to":"Stripe","label":"capture"},{"from":"OrderService","to":"StockService","label":"reserve"},{"from":"OrderService","to":"MailService","label":"receipt"}],
+     "externals":[{"name":"Stripe","under":"PaymentService","what":"cards and payouts"},{"name":"Postgres","under":"StockService","what":"the shelves' rows"}]}
     """#
 
-    static var planSystem: String { planRules + "\n\nA plan for another system, to copy the shape of and never the names:\n" + planExample }
+    /// Whether `text` repeats the worked examples' words, two of them in a row: a model copying a duty or a note rather
+    /// than reading the code. Short words and the plate's own common words do not count.
+    static func echoes(_ text: String) -> Bool { !pairs(text).isDisjoint(with: examplePairs) }
+
+    private static let examplePairs: Set<String> = {
+        var said: [String] = []
+        if let plan = try? JSONDecoder().decode(PlatePlan.self, from: Data(planExample.utf8)) {
+            said += Array(plan.duties.values) + plan.lanes.compactMap(\.note) + [plan.rootNote].compactMap { $0 } + plan.externals.compactMap(\.what)
+        }
+        if let spec = try? JSONDecoder().decode(PlateSpec.self, from: Data(example.utf8)) {
+            said += spec.nodes.compactMap(\.duty) + [spec.title, spec.subtitle, spec.legend ?? "", spec.heading ?? ""]
+        }
+        return said.reduce(into: Set<String>()) { $0.formUnion(pairs($1)) }
+    }()
+
+    private static func pairs(_ text: String) -> Set<String> {
+        let common: Set<String> = ["the", "and", "its", "every", "what", "with", "from", "into", "that", "this", "each", "one", "for", "until",
+                                   "when", "dial", "gold", "are", "was", "has", "per", "all", "own", "says", "line"]
+        let words = text.lowercased().split { !$0.isLetter }.map(String.init).filter { $0.count > 2 && !common.contains($0) }
+        return Set(zip(words, words.dropFirst()).map { "\($0) \($1)" })
+    }
+
+    static var planSystem: String { planRules + "\n\nA plan for another system, to copy the shape of and never the names or the words:\n" + planExample }
 
     static var planReviseSystem: String {
         planRules + "\n\nYou are fixing a plan you wrote, after its plate was composed, drawn and measured. Keep everything the findings do not name; make the fewest changes that clear every finding (move a box to another lane, drop a step of the walk, shorten a duty). Answer with the whole plan, fixed."
@@ -106,8 +124,8 @@ enum PlateDraft {
             "id": text, "name": text, "colour": colour, "beside": ["type": "boolean"], "note": text, "boxes": ["type": "array", "items": text]]]
         let step: [String: Any] = ["type": "object", "required": ["from", "to"], "properties": ["from": text, "to": text, "label": text]]
         let external: [String: Any] = ["type": "object", "required": ["name", "under"], "properties": ["name": text, "under": text, "what": text]]
-        let plan: [String: Any] = ["type": "object", "required": ["caption", "title", "subtitle", "lanes", "walk"], "properties": [
-            "caption": text, "title": text, "subtitle": text, "heading": text, "machine": text, "tag": text, "legend": text,
+        let plan: [String: Any] = ["type": "object", "required": ["unit", "start", "end", "lanes", "duties", "walk"], "properties": [
+            "subject": text, "unit": text, "start": text, "end": text, "rootNote": text,
             "lanes": ["type": "array", "items": lane], "duties": ["type": "object", "additionalProperties": text],
             "walk": ["type": "array", "items": step], "externals": ["type": "array", "items": external]]]
         return (try? JSONSerialization.data(withJSONObject: plan, options: [.sortedKeys])) ?? Data("{}".utf8)

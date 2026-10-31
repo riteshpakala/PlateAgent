@@ -53,6 +53,35 @@ final class PlateComposeTests: XCTestCase {
         XCTAssertNil(roomy.node("mlx")?.under, "a lane with room sets it in the row, beside its part")
     }
 
+    /// The front ends and the root are the graph's, whatever lane the plan gave them; a part the plan left out sits by
+    /// the part it works with most; a duty that echoes the worked example gives way to the code's own line; the header
+    /// is made of the plan's three words.
+    func testTheTopLanesAreTheGraphsAndEveryPartHasALane() {
+        var graph = self.graph
+        graph.root = "AppRoot"
+        graph.kind = "Service"
+        graph.conformance = "GraniteService"
+        graph.project = "App"
+        graph.starters.append(PlateGraph.Starter(name: "app", path: "Sources/AppCLI", parts: [], what: "a terminal", reaches: ["AppRoot"], role: .entry))
+        let plan = PlatePlan(unit: "Turn", start: "the ask", end: "records",
+                             lanes: [.init(id: "front", name: "the front ends", colour: .dial, boxes: ["app", "AppRoot", "ModelService"]),
+                                     .init(id: "turn", name: "a turn", colour: .dial, boxes: ["SessionService"])],
+                             duties: ["app": "the till in a terminal: sell, refund, count", "SessionService": "opens a session"],
+                             walk: [.init(from: "app", to: "AppRoot"), .init(from: "AppRoot", to: "SessionService")])
+        let spec = PlateCompose.spec(plan, graph: graph)
+        XCTAssertEqual(spec.lanes.map(\.id), ["front", "root", "turn"])
+        XCTAssertEqual(spec.lanes.map(\.colour), [.dial, .dial, .blue], "a lane of parts is never the frame's colour")
+        XCTAssertEqual(spec.nodes.filter { $0.under == nil }.map { "\($0.lane):\($0.name)" },
+                       ["front:app", "root:AppRoot", "turn:SessionService", "turn:ModelService", "turn:TranscriptService"],
+                       "the root alone under the front ends; the parts the plan put beside them, and the one it left out, in the parts' lanes")
+        XCTAssertEqual(spec.node("app")?.duty, "a terminal", "a duty copied from the example gives way to the code's line")
+        XCTAssertEqual(spec.edges.first?.colour, .gold, "the walk leaves the front ends in gold")
+        XCTAssertEqual([spec.title, spec.heading, spec.machine, spec.tag], ["One turn, every service", "A turn, through the services", "ONE ASK, END TO END",
+                                                                          "every box is a service or an agent in Sources/Agents, Sources/App and Sources/AppCLI"])
+        XCTAssertTrue(spec.legend?.hasPrefix("Each box is a **GraniteService**; its line says what it is responsible for") == true, spec.legend ?? "")
+        XCTAssertTrue(spec.legend?.hasSuffix("The numbers walk one turn.") == true, spec.legend ?? "")
+    }
+
     func testTheCodesOwnLineReadsAsADuty() {
         let rows: [(String, String)] = [
             ("The sessions, as a service: every session open in this process — a session opened, a turn sent.", "the sessions: every session open in this process"),
@@ -83,16 +112,14 @@ final class PlateComposeTests: XCTestCase {
         let root = URL(fileURLWithPath: path)
         let graph = PlateGraph.read([root.appendingPathComponent("Sources/CraftRuntime/Services")], root: root)
         let plan = try JSONDecoder().decode(PlatePlan.self, from: Data(#"""
-        {"caption":"RAO STUDIOS · CRAFT · THE FLOW","title":"One turn, every service","subtitle":"from the ask to the records: what each service is responsible for, in the order a turn passes through it","heading":"A turn, through the services","machine":"ONE ASK, END TO END","tag":"every box is a service or an agent in Sources/CraftAgents, Sources/CraftRuntime and Sources/CraftApp",
-         "lanes":[{"id":"front","name":"the front ends","colour":"dial","boxes":["craft","Craft.app","CraftAppRoot","EnvironmentService"]},
-                  {"id":"root","name":"the root","colour":"dial","boxes":["CraftRuntimeRoot"],"note":"{dial:the handlers:} memory held » halt the turns · critical pressure » stop the workers"},
-                  {"id":"turn","name":"a turn","colour":"blue","boxes":["SessionService","TranscriptService","ModelService"]},
-                  {"id":"project","name":"the project","colour":"green","boxes":["RecordsService","ProjectService","WatchService","ThreadService"]},
+        {"subject":"flow","unit":"turn","start":"ask","end":"records",
+         "rootNote":"{dial:the handlers:} memory held » halt the turns · critical pressure » stop the workers",
+         "lanes":[{"id":"turn","name":"a turn","colour":"blue","boxes":["SessionService","TranscriptService","ModelService"]},
+                  {"id":"project","name":"the project","colour":"green","boxes":["RecordsService","ProjectService","ThreadService"]},
                   {"id":"machine","name":"the machine","colour":"orange","beside":true,"boxes":["StacksService","ConfigService","UpdateService","AccountService"]}],
          "duties":{"SessionService":"opens a session, performs its turn, then reads the facts and counts the recall","TranscriptService":"the transcript, modes and attention of every open session","ModelService":"the one model: catalog, install, memory, the ceiling, pressure"},
          "walk":[{"from":"craft","to":"CraftRuntimeRoot"},{"from":"CraftAppRoot","to":"CraftRuntimeRoot","label":"boot · open · turn"},{"from":"CraftRuntimeRoot","to":"SessionService"},{"from":"SessionService","to":"TranscriptService"},{"from":"TranscriptService","to":"worker","label":"perform"},{"from":"worker","to":"MLX","label":"generate"},{"from":"SessionService","to":"RecordsService"},{"from":"SessionService","to":"ProjectService"},{"from":"SessionService","to":"WatchService"},{"from":"WatchService","to":"ThreadService","label":"files"}],
-         "externals":[{"name":"MLX","under":"ModelService","what":"through Frigate"},{"name":"Thread, in AII","under":"ThreadService","what":"the index every Rao app shares"},{"name":"Sewn, in AII","under":"AccountService","what":"sign-in and the account's tokens"}],
-         "legend":"Each box is a **GraniteService**; its line says what it is responsible for. Solid arrows are dispatches down the relay graph; {gold:dashed gold} is an agent's run and what it writes; dashed grey is a process across a wire. The numbers walk one turn."}
+         "externals":[{"name":"MLX","under":"ModelService","what":"through Frigate"},{"name":"Thread, in AII","under":"ThreadService","what":"the index every Rao app shares"},{"name":"Sewn, in AII","under":"AccountService","what":"sign-in and the account's tokens"}]}
         """#.utf8))
         let spec = PlateCompose.spec(plan, graph: graph)
         let folder = try Fixture.folder()
@@ -104,5 +131,12 @@ final class PlateComposeTests: XCTestCase {
             try FileManager.default.copyItem(atPath: result.path, toPath: out)
         }
         print("composed:", spec.nodes.count, "boxes", spec.edges.count, "arrows · findings:", result.findings)
+        XCTAssertEqual(spec.lanes.map(\.name), ["the front ends", "the root", "a turn", "the project", "the machine"])
+        XCTAssertEqual(spec.nodes.filter { $0.lane == "front" }.map(\.name), ["craft", "Craft.app", "CraftAppRoot", "EnvironmentService"])
+        XCTAssertTrue(spec.nodes.contains { $0.name == "WatchService" && $0.lane == "project" }, "the part the plan left out sits by the part it works with most")
+        XCTAssertEqual([spec.caption, spec.title, spec.subtitle, spec.heading, spec.machine],
+                       ["RAO STUDIOS · CRAFT · THE FLOW", "One turn, every service",
+                        "from the ask to the records: what each service is responsible for, in the order a turn passes through it",
+                        "A turn, through the services", "ONE ASK, END TO END"])
     }
 }
