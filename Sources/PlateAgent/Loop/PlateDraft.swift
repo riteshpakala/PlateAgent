@@ -59,19 +59,23 @@ enum PlateDraft {
     static let planRules = """
     You plan one editorial plate of a software system. The kit draws it from the code's own graph: the front ends and the root in the top two lanes, each box's code line, its agents, the arrows the code has, the header and the legend. You decide what the graph cannot: how the parts group into lanes, a line of duty for each box, the walk the numbers take, what is across a wire, and three words for the header. Answer with the plan, one compact JSON object.
 
-    - `unit` is what one pass of the walk carries, one word as the code says it (what a person sends in and the parts pass along). `start` is where it starts, one or two words (what the person does first); `end` is what it leaves behind, one or two words. The header reads "One <unit>, every <kind of part>" and "from the <start> to the <end>". `subject` is what the plate shows, one word: "flow" when the person asks for a flow.
-    - `lanes` hold the parts, below the front ends and the root, which are drawn for you. First a lane for the parts the walk passes through first (blue, named "a <unit>"), then the rest by the scope they work on, narrower first: what one project, document or user owns (green), then what the whole machine or app shares (orange). Each lane is named for what its boxes are, "the <noun>". Two to four lanes; at most four boxes in a lane.
+    - `unit` is what one pass of the walk carries, one word, the code's own: the smallest thing that goes through end to end. When one thing holds many of another (a connection holds many queries, a session many of what is sent in it), the unit is the one held. `start` is what the person gives first, in the code's word, one or two words; `end` is what the pass leaves behind for next time, one or two words. The header reads "One <unit>, every <kind of part>" and "from the <start> to the <end>". `subject` is what the plate shows, one word: "flow" when the person asks for a flow.
+    - `lanes` hold the parts, below the front ends and the root, which are drawn for you. A lane is a scope, never a rank:
+      1. the part the walk enters first and the parts it hands the <unit> to while it runs, two to four (blue, named "a <unit>");
+      2. the parts that keep one project's, document's or user's state from one <unit> to the next: what it learned, its files, its index (green, named for that scope: "the <scope>");
+      3. the parts every project or user shares: settings, accounts, updates, what is installed (orange, `beside` lane 2, named for the whole: "the <whole>").
+      At most four boxes in a lane.
     - `boxes` are the parts' names exactly as the graph writes them. Every part goes in a lane. A part's agents are drawn under it for you: never list them as boxes.
     - `duties`: for EVERY box (the front ends and the root too), one line of what it is responsible for, in your own plain words, lowercase, at most 70 characters, read off its line in the graph: what it holds, then what it does. Never the box's own name, never "a service that".
     - `rootNote`: one line on what the root does that no box says, read off its line in the graph (the handlers it installs and what each answers), as "{dial:<what they are>:} <event> » <answer> · <event> » <answer>".
     - `walk` is the one path the person asked about, in the order it happens, six to twelve steps, each from a box to a box, an agent or an external. It starts where a person starts it: each front end into the root (two ways into one box share a number), then down through the root to the part that does the work, out to its agents and what they reach, then to what the work leaves behind. Each step is one of the graph's references, a front end's arrow, a part running one of its agents, or a part reaching an external. Give each a `label`: one to three words of code joined by " · ", what the shown line calls.
-    - `externals`: the engines, servers and stores the parts reach across a wire, read off the imports and the parts' lines, each `under` the part that reaches it, with a few words of `what`.
+    - `externals`: the processes across a wire that a part's line says it reaches: a server it talks to, an index it keeps, a model runtime it loads. Never a library or module it imports. Each `under` the part that reaches it, named as the line names it, with a few words of `what`.
     - Use only names the graph has. The example below is another system: never its names, its words or its duties.
     """
 
     /// A plan for another system: what the model copies the shape of.
     static let planExample = #"""
-    {"subject":"flow","unit":"order","start":"tap","end":"receipt",
+    {"subject":"flow","unit":"order","start":"checkout","end":"receipt",
      "rootNote":"{dial:its watchers:} stock low » hold new orders · a refund » reopen the order",
      "lanes":[{"id":"order","name":"an order","colour":"blue","boxes":["CartService","OrderService","PaymentService"]},
               {"id":"store","name":"the store","colour":"green","boxes":["StockService","CatalogService","SearchService"]},
@@ -84,6 +88,12 @@ enum PlateDraft {
     /// Whether `text` repeats the worked examples' words, two of them in a row: a model copying a duty or a note rather
     /// than reading the code. Short words and the plate's own common words do not count.
     static func echoes(_ text: String) -> Bool { !pairs(text).isDisjoint(with: examplePairs) }
+
+    /// The worked example's header words (`unit`, `start`, `end`): a plan that gives one back copied it.
+    static let exampleWords: Set<String> = {
+        guard let plan = try? JSONDecoder().decode(PlatePlan.self, from: Data(planExample.utf8)) else { return [] }
+        return Set([plan.unit, plan.start, plan.end].compactMap { $0?.lowercased() })
+    }()
 
     private static let examplePairs: Set<String> = {
         var said: [String] = []

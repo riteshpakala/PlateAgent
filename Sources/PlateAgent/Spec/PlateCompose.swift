@@ -226,7 +226,7 @@ enum PlateCompose {
         func word(_ text: String?, _ fallback: String) -> String {
             var said = (text ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
             for article in ["a ", "an ", "the ", "one "] where said.hasPrefix(article) { said = String(said.dropFirst(article.count)) }
-            return said.isEmpty || said.count > 24 ? fallback : said
+            return said.isEmpty || said.count > 24 || PlateDraft.exampleWords.contains(said) ? fallback : said
         }
         func article(_ word: String) -> String { "aeiou".contains(word.first ?? "x") ? "an" : "a" }
         func own(_ text: String?) -> String? { text.flatMap { $0.isEmpty || PlateDraft.echoes($0) ? nil : $0 } }

@@ -73,7 +73,7 @@ struct PlateLoop: Sendable {
             let measures = try await context.compute.measures(drawn, grid: grid)
             let layout = PlateLayout.make(drawn, grid: grid, measures: measures)
             let html = layout.page(drawn, faces: try await context.compute.faces())
-            Self.keep(html, round: round)
+            Self.keep(html, round: round, plan: plan)
             let rendered = try await context.compute.render(html)
             let found = checked + layout.findings + PlateMeasure.findings(rendered.raw, spec: drawn)
             yield(.measured(round: round, findings: found))
@@ -148,12 +148,15 @@ struct PlateLoop: Sendable {
         return folder.appendingPathComponent(slug + ".png")
     }
 
-    /// `PLATE_HTML=<folder>` keeps each round's page there, to open in a browser: never beside the PNG, where a
-    /// host that indexes HTML as code would read it.
-    private static func keep(_ html: String, round: Int) {
+    /// `PLATE_HTML=<folder>` keeps each round's page there, to open in a browser, and the plan it was composed from:
+    /// never beside the PNG, where a host that indexes HTML as code would read it.
+    private static func keep(_ html: String, round: Int, plan: PlatePlan?) {
         guard let dir = ProcessInfo.processInfo.environment["PLATE_HTML"], !dir.isEmpty else { return }
         let url = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         try? html.write(to: url.appendingPathComponent("plate-round-\(round).html"), atomically: true, encoding: .utf8)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        if let plan, let json = try? encoder.encode(plan) { try? json.write(to: url.appendingPathComponent("plate-round-\(round).plan.json")) }
     }
 }

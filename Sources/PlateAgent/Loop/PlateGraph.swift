@@ -517,7 +517,7 @@ struct PlateGraph: Sendable {
             for starter in others { out.append("- \(starter.name) (\(starter.path)) → " + starter.parts.joined(separator: ", ")) }
         }
         if !imports.isEmpty {
-            out.append("\n## What they import (a module that is not one of the parts may be across a wire: an external)")
+            out.append("\n## What they import (libraries, never boxes: an external is a process, a server or an engine a part's line says it reaches)")
             out.append(imports.map { "\($0.name) ×\($0.count)" }.joined(separator: ", "))
         }
         return out.joined(separator: "\n")

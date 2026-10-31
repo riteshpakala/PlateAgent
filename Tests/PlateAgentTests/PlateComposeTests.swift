@@ -80,6 +80,9 @@ final class PlateComposeTests: XCTestCase {
                                                                           "every box is a service or an agent in Sources/Agents, Sources/App and Sources/AppCLI"])
         XCTAssertTrue(spec.legend?.hasPrefix("Each box is a **GraniteService**; its line says what it is responsible for") == true, spec.legend ?? "")
         XCTAssertTrue(spec.legend?.hasSuffix("The numbers walk one turn.") == true, spec.legend ?? "")
+        let copied = PlateCompose.spec(PlatePlan(unit: "turn", start: "checkout", end: "receipt", lanes: plan.lanes), graph: graph)
+        XCTAssertEqual(copied.subtitle, "from the start to the end: what each service is responsible for, in the order a turn passes through it",
+                       "a header word the example gave is not this project's")
     }
 
     func testTheCodesOwnLineReadsAsADuty() {

@@ -2,7 +2,9 @@ import Foundation
 
 /// Where each lane's boxes go along it, so arrows cross less: a box moves toward the boxes it connects to in other
 /// lanes (their mean place), lanes top to bottom and back, and the new order is kept only when it crosses fewer
-/// arrows than the order the spec wrote. A lane whose boxes name their own columns keeps them.
+/// arrows than the order the spec wrote. A lane whose boxes name their own columns keeps them, and so do the frame's
+/// lanes (dial: the front ends, the root), which read in the order they were composed: the command line, then the app,
+/// its root and what it holds.
 ///
 /// PIN: the spec's order wins a tie. A model often writes a lane in the order its story reads (the front ends left to
 /// right as the ask passes through them); a reorder has to buy fewer crossings to undo that.
@@ -27,7 +29,7 @@ enum PlateOrder {
                 let laneID = candidate.lanes[index].id
                 let slots = candidate.nodes.indices.filter { candidate.nodes[$0].lane == laneID && parents[candidate.nodes[$0].id] == nil }
                 let boxes = slots.map { candidate.nodes[$0] }
-                guard boxes.count > 1, !boxes.contains(where: { $0.column != nil || $0.span != nil }) else { continue }
+                guard boxes.count > 1, candidate.lanes[index].colour != .dial, !boxes.contains(where: { $0.column != nil || $0.span != nil }) else { continue }
                 func centre(_ id: String) -> Double? { grid.cells[id].map { $0.x + $0.width / 2 } }
                 let keyed = boxes.enumerated().map { position, node -> (key: Double, position: Int, node: PlateNode) in
                     let others = (neighbours[node.id] ?? []).filter { candidate.node($0)?.lane != laneID }.compactMap(centre)
