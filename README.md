@@ -1,9 +1,10 @@
 # PlateAgent
 
 An editorial architecture plate of a project, shipped as a [Granite](https://github.com/riteshpakala/Granite)
-agent package. A call names the folders a system lives in; the app's own model drafts what the plate says, the
-kit lays it out in the Rao plate style, WebKit measures it, and the model fixes what overflowed, overlapped or
-crossed until it measures clean. The plate is written as a PNG at 2x, which carries the spec it was drawn from.
+agent package. A call names the folders a system lives in; the package reads the code's graph off them, the app's
+own model plans what the plate says, the package composes it, the kit lays it out in the Rao plate style, WebKit
+measures it, and the model revises the plan until it measures clean. The plate is written as a PNG at 2x, which
+carries the spec it was drawn from.
 
 It is the process behind Craft's README plates ([`flow.png`](https://github.com/riteshpakala/Craft)), made an
 agent: the taste lives in the kit, the judgment in a loop of drawing and measuring, and the model only ever says
@@ -35,7 +36,7 @@ package's `guide` rides the turn's prompt, and the call shows on Craft's agent m
 
 | Field | | |
 |---|---|---|
-| `brief` | optional | what to draw: the tiers, top to bottom, and the one path the numbers walk |
+| `brief` | optional | what the person asked for, when the ask does not say it: the path the numbers walk, what to put first; never a guess at the architecture, which the package reads off the code |
 | `sources` | optional | the folders or files the plate is drawn from, relative to `directory`; the folder itself when left out |
 | `spec` | optional | a plate's PNG from an earlier call (or a spec's JSON): drawn again with no draft; with `brief`, changed as it asks |
 | `output` | optional | where to write the PNG; `docs/README_Assets/<title>.png` (then `docs/`, then the folder) when left out |
@@ -50,18 +51,20 @@ took, what the last round still found (one sentence each), the title, and how ma
 | Step | Whose | What |
 |---|---|---|
 | Read | the package | `sources` as a digest: a folder's tree, and of each file its opening comment, its type lines, its Granite declarations and its functions, capped |
-| Read the graph | the package | the parts (a folder named for its type), who refers to whom, their operations and agents, what starts them, what they import |
-| Draft | the host's model | the spec: lanes in the order the thing flows, boxes (a name, one sentence of duty, a code line), arrows (a stroke, a label, a number on the one walk), the header and the legend |
+| Read the graph | the package | the parts (a folder named for its type), who refers to whom and what one calls on the other, their operations in the order they declare their events, their agents; the front ends (the manifest's executables, an app as `<Package>.app`), the root that holds the parts and a service a front end holds; what they import |
+| Plan | the host's model | a few hundred tokens: the lanes and which parts sit in each, a duty for every box, the walk the numbers take, what is across a wire, the header and the legend |
+| Compose | the package | the spec from the plan and the graph: each box's duty fitted to two lines of its box, its operations as its code line, its agents hung under it; the walk numbered (two ways into one box share a number), each agent's run, each external's wire, the code's other references labelled with what is called |
 | Check | the package | ids that name nothing, text past what a box holds, a walk that skips a number |
 | Grid | the package | each lane's boxes in columns: a column of agents and externals narrower, a gap a labelled arrow crosses as wide as its label, a column as wide as its longest code line |
 | Measure | WebKit | what each box says, at its width, so each row is as tall as its tallest box |
 | Lay out | the package | lanes stacked, boxes placed, arrows routed (direct, an elbow, round a gutter, under the row, round a box), numbers and labels placed clear |
 | Render | WebKit | the page settled to the header's rhythm, measured, and exported at 2x |
 | Measure again | WebKit | every text wider than its box, every two things drawn over each other, everything past the edge |
-| Revise | the host's model | the findings, as sentences, and the spec back, fixed; until it measures clean or the rounds are spent |
+| Revise | the host's model | the findings, as sentences, and the plan back, fixed; until it measures clean or the rounds are spent |
 
-The best round is written. Nothing on a plate is placed by the model: a local coder writes a good spec, and it is
-never asked to place forty labels.
+The best round is written. Nothing on a plate is placed by the model, and it never writes an arrow the code does
+not have: a local coder plans a good plate in a minute, and it is never asked to place forty labels. Sources with
+no code graph (a folder of notes) are drafted whole instead: the model writes the spec.
 
 ## The kit
 

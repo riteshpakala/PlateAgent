@@ -33,7 +33,7 @@ final class PlateComposeTests: XCTestCase {
         XCTAssertEqual(spec.nodes.map(\.name), ["AppRoot", "SessionService", "TranscriptService", "coder", "worker", "ModelService", "Nowhere", "MLX"],
                        "a shortened name resolves; agents hang under their part; an unknown box is drawn as written")
         let session = spec.node("sessionservice")
-        XCTAssertEqual(session?.duty, "Opens a session and runs its turns", "the code's own line, its first sentence")
+        XCTAssertEqual(session?.duty, "opens a session and runs its turns", "the code's own line, its first sentence, as a duty reads")
         XCTAssertEqual(session?.code, "Open · Send · Close")
         XCTAssertEqual(spec.node("modelservice")?.duty, "the one model: install, memory", "the plan's duty wins")
         XCTAssertEqual(spec.node("approot")?.code, "App/Root")
@@ -49,6 +49,30 @@ final class PlateComposeTests: XCTestCase {
         XCTAssertEqual(spec.normalized().check().filter { $0.kind == .unknown }, [], "every arrow is between boxes it drew")
     }
 
+    func testTheCodesOwnLineReadsAsADuty() {
+        let rows: [(String, String)] = [
+            ("The sessions, as a service: every session open in this process — a session opened, a turn sent.", "the sessions: every session open in this process"),
+            ("The projects Craft knows, as Granite state: the list a person opened", "the projects Craft knows: the list a person opened"),
+            ("Craft's lane of the one index, as a service: whether it runs", "Craft's lane of the one index: whether it runs"),
+            ("A windowed app: Dock tile, main menu. AppKit owns the process.", "a windowed app: Dock tile, main menu"),
+            ("SQL — the queries", "SQL — the queries"),
+        ]
+        for (what, duty) in rows { XCTAssertEqual(PlateCompose.plain(what), duty, what) }
+        XCTAssertEqual(PlateCompose.sentence("the projects Craft knows: the list a person opened (persisted), each project's facts (git, index)", limit: 74),
+                       "the projects Craft knows: the list a person opened (persisted)", "cut at the last clause that fits")
+    }
+
+    func testTwoWaysIntoOneBoxShareANumber() {
+        var spec = PlateSpec(caption: "c", title: "t", subtitle: "s", lanes: [PlateLane(id: "a", name: "a", colour: .dial)],
+                             nodes: ["cli", "app", "root", "next"].map { PlateNode(id: $0, lane: "a", name: $0) },
+                             edges: [PlateEdge(from: "cli", to: "root", number: 1), PlateEdge(from: "app", to: "root", number: 1),
+                                     PlateEdge(from: "root", to: "next", number: 2)])
+        XCTAssertEqual(spec.check(), [], "the command line and the app both start the walk at the root")
+        spec.edges[2].number = 1
+        XCTAssertEqual(spec.check().map(\.kind), [.limit], "a shared number into two boxes is two steps")
+        XCTAssertEqual(spec.clamped().edges.map(\.number), [1, 1, 2])
+    }
+
     /// `CRAFT_ROOT=<a Craft checkout> PLATE_OUT=<png>` draws Craft's services from a plan like the one a model should write.
     func testCraftsFlowFromAPlan() async throws {
         guard let path = ProcessInfo.processInfo.environment["CRAFT_ROOT"] else { throw XCTSkip("set CRAFT_ROOT to read a Craft checkout") }
@@ -56,13 +80,13 @@ final class PlateComposeTests: XCTestCase {
         let graph = PlateGraph.read([root.appendingPathComponent("Sources/CraftRuntime/Services")], root: root)
         let plan = try JSONDecoder().decode(PlatePlan.self, from: Data(#"""
         {"caption":"RAO STUDIOS · CRAFT · THE FLOW","title":"One turn, every service","subtitle":"from the ask to the records: what each service is responsible for, in the order a turn passes through it","heading":"A turn, through the services","machine":"ONE ASK, END TO END","tag":"every box is a service or an agent in Sources/CraftAgents, Sources/CraftRuntime and Sources/CraftApp",
-         "lanes":[{"id":"front","name":"the front ends","colour":"dial","boxes":["CraftAppRoot","Cockpit","Settings"]},
+         "lanes":[{"id":"front","name":"the front ends","colour":"dial","boxes":["craft","Craft.app","CraftAppRoot","EnvironmentService"]},
                   {"id":"root","name":"the root","colour":"dial","boxes":["CraftRuntimeRoot"],"note":"{dial:the handlers:} memory held » halt the turns · critical pressure » stop the workers"},
                   {"id":"turn","name":"a turn","colour":"blue","boxes":["SessionService","TranscriptService","ModelService"]},
                   {"id":"project","name":"the project","colour":"green","boxes":["RecordsService","ProjectService","WatchService","ThreadService"]},
                   {"id":"machine","name":"the machine","colour":"orange","beside":true,"boxes":["StacksService","ConfigService","UpdateService","AccountService"]}],
          "duties":{"SessionService":"opens a session, performs its turn, then reads the facts and counts the recall","TranscriptService":"the transcript, modes and attention of every open session","ModelService":"the one model: catalog, install, memory, the ceiling, pressure"},
-         "walk":[{"from":"CraftAppRoot","to":"CraftRuntimeRoot","label":"boot · open · turn"},{"from":"CraftRuntimeRoot","to":"SessionService"},{"from":"SessionService","to":"TranscriptService"},{"from":"TranscriptService","to":"worker","label":"perform"},{"from":"worker","to":"MLX","label":"generate"},{"from":"SessionService","to":"RecordsService"},{"from":"SessionService","to":"ProjectService"},{"from":"SessionService","to":"WatchService"},{"from":"WatchService","to":"ThreadService","label":"files"}],
+         "walk":[{"from":"craft","to":"CraftRuntimeRoot"},{"from":"CraftAppRoot","to":"CraftRuntimeRoot","label":"boot · open · turn"},{"from":"CraftRuntimeRoot","to":"SessionService"},{"from":"SessionService","to":"TranscriptService"},{"from":"TranscriptService","to":"worker","label":"perform"},{"from":"worker","to":"MLX","label":"generate"},{"from":"SessionService","to":"RecordsService"},{"from":"SessionService","to":"ProjectService"},{"from":"SessionService","to":"WatchService"},{"from":"WatchService","to":"ThreadService","label":"files"}],
          "externals":[{"name":"MLX","under":"ModelService","what":"through Frigate"},{"name":"Thread, in AII","under":"ThreadService","what":"the index every Rao app shares"},{"name":"Sewn, in AII","under":"AccountService","what":"sign-in and the account's tokens"}],
          "legend":"Each box is a **GraniteService**; its line says what it is responsible for. Solid arrows are dispatches down the relay graph; {gold:dashed gold} is an agent's run and what it writes; dashed grey is a process across a wire. The numbers walk one turn."}
         """#.utf8))

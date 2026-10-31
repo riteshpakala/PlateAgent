@@ -33,11 +33,19 @@ struct PlateGraph: Sendable {
         let path: String
         let parts: [String]
         var what: String? = nil
+        /// The other starters it names: a front end reaching the root, an app's root reaching a service it holds.
+        var reaches: [String] = []
+        /// What a person runs (a command line, an app: a product of the project), or a service a front end holds.
+        var role: Role = .file
+
+        enum Role: String, Sendable { case file, entry, held }
     }
 
     var parts: [Part] = []
     var references: [Reference] = []
     var starters: [Starter] = []
+    /// The starter that holds the parts: it names three in four of them, and the most.
+    var root: String?
     var imports: [(name: String, count: Int)] = []
 
     static let skipped: Set<String> = [".build", "node_modules", "DerivedData", "Pods", "dist", "build", ".next", "vendor", "__pycache__", ".git",
@@ -90,6 +98,7 @@ struct PlateGraph: Sendable {
                 neighbours.insert(name)
             }
         }
+        let outside = partOf.filter { !inSources.contains($0.key) && !neighbours.contains($0.value.name) }
         partOf = partOf.filter { inSources.contains($0.key) || neighbours.contains($0.value.name) }
         var graph = PlateGraph()
         var filesOf: [String: [URL]] = [:]
@@ -112,17 +121,20 @@ struct PlateGraph: Sendable {
                 return String(stem.dropFirst(name.count + 1))
             }
             if operations.isEmpty, let main, let text = texts[main] { operations = functions(in: text) }
-            part.operations = Array(Set(operations)).sorted()
+            // In the order the part declares its events (its author's order), else by name.
+            let events = own.flatMap { events(in: texts[$0] ?? "") }
+            part.operations = Array(Set(operations)).sorted { (events.firstIndex(of: $0.lowercased()) ?? Int.max, $0) < (events.firstIndex(of: $1.lowercased()) ?? Int.max, $1) }
             part.agents = own.flatMap { agents(in: texts[$0] ?? "") }
             graph.parts.append(part)
         }
         // An operation most parts share is plumbing (every Granite service has `Set` and `Reply`), not what one does.
+        var plumbing: Set<String> = ["Set", "Reply"]
         if graph.parts.count >= 3 {
             var shared: [String: Int] = [:]
             for part in graph.parts { for operation in Set(part.operations) { shared[operation, default: 0] += 1 } }
-            let plumbing = Set(shared.filter { Double($0.value) >= Double(graph.parts.count) * 0.75 }.keys)
-            for i in graph.parts.indices { graph.parts[i].operations.removeAll { plumbing.contains($0) } }
+            plumbing.formUnion(shared.filter { Double($0.value) >= Double(graph.parts.count) * 0.75 }.keys)
         }
+        for i in graph.parts.indices { graph.parts[i].operations.removeAll { plumbing.contains($0) } }
         // Who refers to whom, by the other parts' names in each part's files.
         for from in names {
             for to in names where to != from {
@@ -148,6 +160,24 @@ struct PlateGraph: Sendable {
         }
         graph.rank()
         graph.starters = starters(of: Set(names), texts: texts.filter { partOf[$0.key] == nil }, root: root)
+        // The root holds three in four of the parts; of two that do (an app's root and the runtime's), the one the other names.
+        let holders = graph.starters.filter { Double($0.parts.count) >= Double(names.count) * 0.75 && $0.parts.count >= 2 }
+        func namedBy(_ starter: Starter) -> Int {
+            holders.filter { other in
+                other.name != starter.name && text(of: other, in: texts, root: root).range(of: "\\b" + NSRegularExpression.escapedPattern(for: starter.name) + "\\b", options: .regularExpression) != nil
+            }.count
+        }
+        graph.root = holders.max { (namedBy($0), $0.parts.count) < (namedBy($1), $1.parts.count) }?.name
+        graph.front(texts: texts, outside: outside, kind: kind, root: root)
+        // What only the root calls is its wiring at boot (`connect`): last, after what the part is for.
+        if let holder = graph.root, let starter = graph.starters.first(where: { $0.name == holder }) {
+            let said = text(of: starter, in: texts, root: root)
+            for i in graph.parts.indices {
+                let wiring = Set(callCounts(from: said, to: graph.parts[i].name).keys.map { $0.lowercased() })
+                let ops = graph.parts[i].operations
+                graph.parts[i].operations = ops.filter { !wiring.contains($0.lowercased()) } + ops.filter { wiring.contains($0.lowercased()) }
+            }
+        }
         var imports: [String: Int] = [:]
         for text in partOf.keys.compactMap({ texts[$0] }) {
             for line in text.components(separatedBy: .newlines) where line.hasPrefix("import ") {
@@ -192,6 +222,92 @@ struct PlateGraph: Sendable {
             .prefix(8).map { $0 }
     }
 
+    /// The front ends, read off the code: what a person runs (the project's executables, from its manifest), the
+    /// starters that name the root, and a service of the parts' kind that one of those holds rather than a part (an
+    /// app's environment). Each says which other starters it reaches.
+    mutating func front(texts: [URL: String], outside: [URL: (name: String, path: URL)], kind: String?, root: URL) {
+        func text(of starter: Starter) -> String { Self.text(of: starter, in: texts, root: root) }
+        func names(_ candidates: [String], in text: String) -> [String] {
+            candidates.filter { text.range(of: "\\b" + NSRegularExpression.escapedPattern(for: $0) + "\\b", options: .regularExpression) != nil }
+        }
+        let partNames = parts.map(\.name)
+        // A service a front end holds: of the parts' kind, outside the sources, named by a starter that names the root.
+        if let kind, let holder = self.root {
+            var held: [String: URL] = [:]
+            for (_, part) in outside where part.name.hasSuffix(kind) && part.name != kind && !partNames.contains(part.name) { held[part.name] = part.path }
+            for i in starters.indices where starters[i].name != holder {
+                let said = text(of: starters[i])
+                guard !names([holder], in: said).isEmpty else { continue }
+                for name in names(held.keys.sorted(), in: said) where !starters.contains(where: { $0.name == name }) {
+                    let folder = held[name]!
+                    let own = texts.filter { $0.key.path.hasPrefix(folder.path + "/") || $0.key == folder }
+                    let main = own.first { $0.key.deletingPathExtension().lastPathComponent == name }?.value ?? ""
+                    starters.append(Starter(name: name, path: Self.relative(folder, to: root), parts: names(partNames, in: own.values.joined(separator: "\n")),
+                                            what: Self.what(of: main, type: name), role: .held))
+                }
+            }
+        }
+        // What a person runs: each executable the manifest declares, named as it is run.
+        starters.insert(contentsOf: Self.entries(in: root, texts: texts, holder: self.root, starters: starters), at: 0)
+        // Who reaches whom among them: a front end the root, and a service it holds. A page that names the parts but not
+        // the root is not a front end.
+        let all = starters.map(\.name)
+        for i in starters.indices where starters[i].role == .file && starters[i].name != self.root {
+            let said = text(of: starters[i])
+            guard let holder = self.root, !names([holder], in: said).isEmpty else { continue }
+            starters[i].reaches = names(all.filter { $0 != starters[i].name }, in: said).filter { name in
+                name == holder || starters.first { $0.name == name }?.role == .held
+            }
+        }
+    }
+
+    /// A starter's file and its extensions beside it (`CraftRuntimeRoot+Boot.swift`): what the type says, wherever it says it.
+    static func text(of starter: Starter, in texts: [URL: String], root: URL) -> String {
+        let file = root.appendingPathComponent(starter.path).standardizedFileURL
+        let folder = file.deletingLastPathComponent().path, stem = file.deletingPathExtension().lastPathComponent
+        return texts.filter { url, _ in
+            url == file || (url.deletingLastPathComponent().path == folder && url.deletingPathExtension().lastPathComponent.hasPrefix(stem + "+"))
+        }.sorted { $0.key.path < $1.key.path }.map(\.value).joined(separator: "\n")
+    }
+
+    /// The executables `Package.swift` declares: a command line by its product's name, an app (its code runs an
+    /// `NSApplication` or a SwiftUI `App`) as `<Package>.app`; each with what its code says it is and the starter it
+    /// reaches: the one in its module that names the root, else the root.
+    static func entries(in folder: URL, texts: [URL: String], holder root: String?, starters: [Starter]) -> [Starter] {
+        guard let manifest = try? String(contentsOf: folder.appendingPathComponent("Package.swift"), encoding: .utf8) else { return [] }
+        let package = manifest.firstMatch(of: #/Package\(\s*name:\s*"([^"]+)"/#).map { String($0.1) }
+        var found: [Starter] = []
+        for match in manifest.matches(of: #/\.executable\(\s*name:\s*"([^"]+)"\s*,\s*targets:\s*\[\s*"([^"]+)"/#) {
+            let product = String(match.1), target = String(match.2)
+            let module = folder.appendingPathComponent("Sources").appendingPathComponent(target).standardizedFileURL
+            let own = texts.filter { $0.key.path.hasPrefix(module.path + "/") }
+            guard !own.isEmpty else { continue }
+            let joined = own.values.joined(separator: "\n")
+            let isApp = joined.contains("NSApplication") || joined.contains("UIApplicationMain") || joined.contains("WindowGroup")
+            let name = isApp ? (package ?? product) + ".app" : product
+            // What it is: its entry's abstract (a command line's), else the entry file's opening comment.
+            let entryText = own.first { $0.value.contains("@main") }?.value ?? own.first { $0.key.lastPathComponent == "main.swift" }?.value ?? ""
+            var what = entryText.firstMatch(of: #/abstract:\s*"([^"]+)"/#).map { String($0.1) }
+            if let said = what, let dash = said.range(of: " — "), said[..<dash.lowerBound].trimmingCharacters(in: .whitespaces) == product {
+                what = String(said[dash.upperBound...])
+            }
+            if what == nil, !entryText.isEmpty {
+                let comment = entryText.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
+                    .drop { !$0.hasPrefix("//") && !$0.isEmpty && $0.hasPrefix("import") || $0.isEmpty }
+                    .prefix { $0.hasPrefix("//") }.map { $0.drop { $0 == "/" }.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
+                what = comment.isEmpty ? nil : firstSentence(comment)
+            }
+            var reaches: [String] = []
+            if let root {
+                let inModule = starters.filter { $0.role == .file && $0.name != root && $0.path.hasPrefix("Sources/\(target)/") }
+                    .filter { starter in texts.contains { relative($0.key, to: folder) == starter.path && $0.value.contains(root) } }
+                reaches = inModule.isEmpty ? (joined.contains(root) ? [root] : []) : inModule.map(\.name)
+            }
+            found.append(Starter(name: name, path: "Sources/" + target, parts: [], what: what, reaches: reaches, role: .entry))
+        }
+        return found
+    }
+
     /// The last word most of the parts' names end in (`SessionService`, `ModelService` → `Service`), when at least two
     /// and half of them share it.
     static func dominantSuffix(_ names: [String]) -> String? {
@@ -212,6 +328,11 @@ struct PlateGraph: Sendable {
     /// What `text` calls on `type`: the members it reaches through a variable of that type (`transcripts.center.open`
     /// is `open`) or on the type itself (`WatchService.engine` is `engine`), most used first, three at most.
     static func calls(from text: String, to type: String) -> [String] {
+        callCounts(from: text, to: type).sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.prefix(3).map(\.key)
+    }
+
+    /// Each member `text` reaches on `type`, and how often.
+    static func callCounts(from text: String, to type: String) -> [String: Int] {
         let range = NSRange(text.startIndex..., in: text)
         let escaped = NSRegularExpression.escapedPattern(for: type)
         var names: Set<String> = []
@@ -230,7 +351,7 @@ struct PlateGraph: Sendable {
                 if !plumbing.contains(member) { counts[member, default: 0] += 1 }
             }
         }
-        return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.prefix(3).map(\.key)
+        return counts
     }
 
     // MARK: What the code says
@@ -309,6 +430,15 @@ struct PlateGraph: Sendable {
     private static let agentLine = try! NSRegularExpression(
         pattern: #"@Agent(?:\((?:[^()]|\([^)]*\))*\))?\s+(?:(?:public|package|internal|private|fileprivate)\s+)?var\s+(\w+)\s*:\s*([\w.]+)"#)
 
+    private static let eventLine = try! NSRegularExpression(pattern: #"@Event(?:\([^)]*\))?\s+(?:(?:public|package|internal|private|fileprivate)\s+)?var\s+(\w+)\s*:"#)
+
+    /// `@Event var open: Open.Reducer` declares the event `open`: in the order the part declares them, lowercased.
+    static func events(in text: String) -> [String] {
+        eventLine.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { match in
+            Range(match.range(at: 1), in: text).map { String(text[$0]).lowercased() }
+        }
+    }
+
     /// `@Agent var coder: Coder.Agent` declares the agent `coder`.
     static func agents(in text: String) -> [String] {
         agentLine.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { match in
@@ -317,7 +447,7 @@ struct PlateGraph: Sendable {
         }
     }
 
-    private static func relative(_ url: URL, to root: URL) -> String {
+    static func relative(_ url: URL, to root: URL) -> String {
         let path = url.standardizedFileURL.path, base = root.standardizedFileURL.path
         return path.hasPrefix(base + "/") ? String(path.dropFirst(base.count + 1)) : path
     }
@@ -342,9 +472,26 @@ struct PlateGraph: Sendable {
                            + (reference.calls.isEmpty ? "" : " · calls " + reference.calls.joined(separator: ", ")) + ": `\(reference.example)`")
             }
         }
-        if !starters.isEmpty {
-            out.append("\n## What starts them, from outside these folders (the front ends and the root: the top lanes)")
-            for starter in starters { out.append("- \(starter.name) (\(starter.path)) → " + starter.parts.joined(separator: ", ")) }
+        let front = starters.filter { $0.role != .file || $0.name == root || !$0.reaches.isEmpty }
+        if !front.isEmpty {
+            out.append("\n## The front ends and the root (the top lanes: what a person runs and what it holds, then the root that holds the parts)")
+            for starter in front {
+                var line = "- \(starter.name)"
+                switch starter.role {
+                case .entry: line += " · what a person runs · \(starter.path)"
+                case .held: line += " · a service the front end holds · \(starter.path)"
+                case .file: line += starter.name == root ? " · the root: it holds \(starter.parts.count) of the \(parts.count) parts · \(starter.path)" : " · \(starter.path)"
+                }
+                if !starter.reaches.isEmpty { line += " → " + starter.reaches.joined(separator: ", ") }
+                if starter.name != root, starter.role != .entry, !starter.parts.isEmpty { line += " · names " + starter.parts.joined(separator: ", ") }
+                if let what = starter.what, !what.isEmpty { line += "\n  " + (what.count > 220 ? String(what.prefix(219)) + "…" : what) }
+                out.append(line)
+            }
+        }
+        let others = starters.filter { !front.contains($0) }
+        if !others.isEmpty {
+            out.append("\n## Other files that name the parts (pages and tools: a box only when the request is about them)")
+            for starter in others { out.append("- \(starter.name) (\(starter.path)) → " + starter.parts.joined(separator: ", ")) }
         }
         if !imports.isEmpty {
             out.append("\n## What they import (a module that is not one of the parts may be across a wire: an external)")

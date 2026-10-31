@@ -99,7 +99,7 @@ struct PlateLoop: Sendable {
     }
 
     private func askPlan(_ model: any AgentHostModel, system: String, user: String) async throws -> PlatePlan {
-        let data = try await model.object(schema: PlateDraft.planSchema, system: system, user: user, maxTokens: 2_500, seconds: 300)
+        let data = try await model.object(schema: PlateDraft.planSchema, system: system, user: user, maxTokens: 3_000, seconds: 300)
         do {
             return try JSONDecoder().decode(PlatePlan.self, from: data)
         } catch {

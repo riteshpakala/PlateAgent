@@ -96,13 +96,16 @@ extension PlateSpec {
             long(edge.label, PlateLimits.label, element, "arrow \(i + 1)'s label")
         }
         let numbers = edges.compactMap(\.number)
-        if numbers.count > PlateLimits.numbers {
-            found.append(PlateFinding(.limit, "edges", numbers: [numbers.count, PlateLimits.numbers],
-                                      "\(numbers.count) arrows are numbered and the walk holds \(PlateLimits.numbers): number only the one path, end to end."))
+        // Two ways into one box (the app and the command line into the root) may share a step; nothing else may.
+        let steps = Array(Set(numbers)).sorted()
+        let shared = Dictionary(grouping: edges.filter { $0.number != nil }, by: { $0.number! }).values.allSatisfy { Set($0.map(\.to)).count == 1 }
+        if steps.count > PlateLimits.numbers {
+            found.append(PlateFinding(.limit, "edges", numbers: [steps.count, PlateLimits.numbers],
+                                      "\(steps.count) arrows are numbered and the walk holds \(PlateLimits.numbers): number only the one path, end to end."))
         }
-        if !numbers.isEmpty, numbers.sorted() != Array(1...numbers.count) {
+        if !numbers.isEmpty, steps != Array(1...steps.count) || !shared {
             found.append(PlateFinding(.limit, "edges", numbers: numbers,
-                                      "the numbers are \(numbers.map(String.init).joined(separator: ", ")): number the walk 1 to \(numbers.count), once each, in the order it goes."))
+                                      "the numbers are \(numbers.map(String.init).joined(separator: ", ")): number the walk 1 to \(steps.count), once each (two arrows into one box may share a number), in the order it goes."))
         }
         return found
     }
@@ -142,7 +145,14 @@ extension PlateSpec {
         }
         spec.edges = Array(spec.edges.filter { byID[$0.from] != nil && byID[$0.to] != nil && $0.from != $0.to }.prefix(PlateLimits.edges))
         let walk = spec.edges.indices.filter { spec.edges[$0].number != nil }.sorted { spec.edges[$0].number! < spec.edges[$1].number! }
-        for (step, i) in walk.enumerated() { spec.edges[i].number = step < PlateLimits.numbers ? step + 1 : nil }
+        var step = 0
+        var last: (number: Int, to: String)?
+        for i in walk {
+            let edge = spec.edges[i]
+            if last == nil || last!.number != edge.number! || last!.to != edge.to { step += 1 }
+            last = (edge.number!, edge.to)
+            spec.edges[i].number = step <= PlateLimits.numbers ? step : nil
+        }
         for i in spec.edges.indices { spec.edges[i].label = spec.edges[i].label?.cut(PlateLimits.label) }
         return spec
     }

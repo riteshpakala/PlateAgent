@@ -51,6 +51,53 @@ final class PlateGraphTests: XCTestCase {
         XCTAssertTrue(said.contains("- AppRoot (Sources/App/Root/AppRoot.swift) → ModelService, SessionService"), said)
     }
 
+    /// The front ends are read off the manifest and the roots: what a person runs, the root that holds the parts, the
+    /// app's root that starts it and a service that root holds; and a part's operations in the order it declares its
+    /// events, its wiring at boot last.
+    func testTheFrontEndsAreReadOffTheManifestAndTheRoots() throws {
+        let root = try Fixture.folder()
+        func write(_ path: String, _ text: String) throws {
+            let url = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        }
+        try write("Package.swift", #"let package = Package(name: "Shop", products: [.executable(name: "shop", targets: ["ShopCLI"]), .executable(name: "ShopApp", targets: ["ShopApp"])])"# + "\n")
+        try write("Sources/ShopCLI/ShopCommand.swift", #"@main struct ShopCommand { static let configuration = CommandConfiguration(commandName: "shop", abstract: "shop — a till in a terminal"); func run() { _ = ShopRoot.shared } }"# + "\n")
+        try write("Sources/ShopCLI/Commands/ListCommand.swift", #"struct ListCommand { static let configuration = CommandConfiguration(abstract: "list the orders") }"# + "\n")
+        try write("Sources/ShopApp/main.swift", "import AppKit\n\n// A windowed till: one window a register. AppKit owns the process.\nlet app = NSApplication.shared\n")
+        try write("Sources/ShopApp/ShopAppRoot.swift", "final class ShopAppRoot {\n    let runtime = ShopRoot.shared\n    @Relay var theme: ThemeService\n    @Relay var orders: OrderService\n    @Relay var stock: StockService\n}\n")
+        try write("Sources/ShopApp/Services/ThemeService/ThemeService.swift", "/// Light or dark, and the accent.\nstruct ThemeService {}\n")
+        try write("Sources/ShopRuntime/Root/ShopRoot.swift", "final class ShopRoot {\n    static let shared = ShopRoot()\n    @Relay var orders: OrderService\n    @Relay var stock: StockService\n}\n")
+        try write("Sources/ShopRuntime/Root/ShopRoot+Boot.swift", "extension ShopRoot {\n    func boot() { orders.center.connect.send(); stock.center.connect.send() }\n}\n")
+        try write("Sources/ShopRuntime/Services/OrderService/OrderService.swift", "struct OrderService {\n    @Relay var stock: StockService\n}\n")
+        try write("Sources/ShopRuntime/Services/OrderService/OrderService+Center.swift",
+                  "extension OrderService {\n    struct Center {\n        @Event var set: Set.Reducer\n        @Event var connect: Connect.Reducer\n        @Event var place: Place.Reducer\n        @Event var cancel: Cancel.Reducer\n    }\n}\n")
+        for op in ["Set", "Connect", "Place", "Cancel"] {
+            try write("Sources/ShopRuntime/Services/OrderService/Reducers/OrderService.\(op).swift", "extension OrderService {}\n")
+        }
+        try write("Sources/ShopRuntime/Services/StockService/StockService.swift", "struct StockService {}\n")
+        let graph = PlateGraph.read([root.appendingPathComponent("Sources/ShopRuntime/Services")], root: root)
+        XCTAssertEqual(graph.parts.first { $0.name == "OrderService" }?.operations, ["Place", "Cancel", "Connect"],
+                       "as the center declares them, `Set` never, the root's wiring last")
+        XCTAssertEqual(graph.root, "ShopRoot", "both roots hold every part; the root is the one the app's root names")
+        let front = graph.starters.filter { $0.role != .file || $0.name == graph.root || !$0.reaches.isEmpty }
+        XCTAssertEqual(front.map(\.name), ["shop", "Shop.app", "ShopAppRoot", "ShopRoot", "ThemeService"].sorted { a, b in
+            front.firstIndex { $0.name == a } ?? 0 < front.firstIndex { $0.name == b } ?? 0 })
+        let shop = try XCTUnwrap(graph.starters.first { $0.name == "shop" })
+        XCTAssertEqual(shop.what, "a till in a terminal", "the entry's own abstract, without its name")
+        XCTAssertEqual(shop.reaches, ["ShopRoot"])
+        XCTAssertEqual(shop.path, "Sources/ShopCLI")
+        let app = try XCTUnwrap(graph.starters.first { $0.name == "Shop.app" })
+        XCTAssertEqual(app.what, "A windowed till: one window a register", "an app is named for the package")
+        XCTAssertEqual(app.reaches, ["ShopAppRoot"], "the app's root, which names the root")
+        XCTAssertEqual(graph.starters.first { $0.name == "ShopAppRoot" }?.reaches, ["ShopRoot", "ThemeService"])
+        XCTAssertEqual(graph.starters.first { $0.name == "ThemeService" }?.role, .held)
+        let said = graph.render()
+        XCTAssertTrue(said.contains("- shop · what a person runs · Sources/ShopCLI → ShopRoot\n  a till in a terminal"), said)
+        XCTAssertTrue(said.contains("- ShopRoot · the root: it holds 2 of the 2 parts"), said)
+        XCTAssertTrue(said.contains("- ThemeService · a service the front end holds"), said)
+    }
+
     /// `CRAFT_ROOT=<a Craft checkout> swift test --filter PlateGraphTests/testCraftsServices` prints what a draft of
     /// Craft's services would be told.
     func testCraftsServices() throws {
