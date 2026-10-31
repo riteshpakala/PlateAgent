@@ -3,7 +3,7 @@
 An editorial architecture plate of a project, shipped as a [Granite](https://github.com/riteshpakala/Granite)
 agent package. A call names the folders a system lives in; the app's own model drafts what the plate says, the
 kit lays it out in the Rao plate style, WebKit measures it, and the model fixes what overflowed, overlapped or
-crossed until it measures clean. The plate is written as a PNG at 2x, with its spec beside it.
+crossed until it measures clean. The plate is written as a PNG at 2x, which carries the spec it was drawn from.
 
 It is the process behind Craft's README plates ([`flow.png`](https://github.com/riteshpakala/Craft)), made an
 agent: the taste lives in the kit, the judgment in a loop of drawing and measuring, and the model only ever says
@@ -25,7 +25,7 @@ has beside the JSON: its folder, the person's ask, a line of progress it shows, 
 let input = Data(#"{"sources": ["Sources/App/Services"], "brief": "a turn, through the services"}"#.utf8)
 let answer = try await GraniteRoster.discovered().package("plate")?.perform(input, host: AgentHost(
     directory: project.path, ask: request, model: AppModel(session), note: { line in agentMap.say(line) }))
-// {"path": "/…/docs/README_Assets/one-turn-every-service.png", "paths": [… .png, … .plate.json], "width": 3200, …}
+// {"path": "/…/docs/README_Assets/one-turn-every-service.png", "paths": [… .png], "width": 3200, …}
 ```
 
 [Craft](https://github.com/riteshpakala/Craft) does this: a request that says `$plate` requires the agent, the
@@ -37,7 +37,7 @@ package's `guide` rides the turn's prompt, and the call shows on Craft's agent m
 |---|---|---|
 | `brief` | optional | what to draw: the tiers, top to bottom, and the one path the numbers walk |
 | `sources` | optional | the folders or files the plate is drawn from, relative to `directory`; the folder itself when left out |
-| `spec` | optional | a `.plate.json` an earlier call wrote: drawn again, with no draft and no model |
+| `spec` | optional | a plate's PNG from an earlier call (or a spec's JSON): drawn again with no draft; with `brief`, changed as it asks |
 | `output` | optional | where to write the PNG; `docs/README_Assets/<title>.png` (then `docs/`, then the folder) when left out |
 | `rounds` | optional | how many times the model may fix what the plate measured; 3 when left out |
 | `directory` | the host's | the folder the host works in; a host fills it and does not show it to a model |
@@ -50,6 +50,7 @@ took, what the last round still found (one sentence each), the title, and how ma
 | Step | Whose | What |
 |---|---|---|
 | Read | the package | `sources` as a digest: a folder's tree, and of each file its opening comment, its type lines, its Granite declarations and its functions, capped |
+| Read the graph | the package | the parts (a folder named for its type), who refers to whom, their operations and agents, what starts them, what they import |
 | Draft | the host's model | the spec: lanes in the order the thing flows, boxes (a name, one sentence of duty, a code line), arrows (a stroke, a label, a number on the one walk), the header and the legend |
 | Check | the package | ids that name nothing, text past what a box holds, a walk that skips a number |
 | Grid | the package | each lane's boxes in columns: a column of agents and externals narrower, a gap a labelled arrow crosses as wide as its label, a column as wide as its longest code line |
@@ -80,10 +81,12 @@ The colours are the plates': gold `#c7a659`, blue `#5e8fda`, green `#28a883`, or
 red `#d9645a`, and two greys. `Tests/PlateAgentTests/Support/Fixture.swift` holds Craft's flow plate as a spec,
 and the tests draw it clean at 3200 wide.
 
-## Redraw without a model
+## Redraw, or change, without a draft
 
-Every call writes the spec beside the PNG. Edit a word in `<name>.plate.json` and call again with `spec`: the
-plate is laid out, measured and written with no model, so a host without one can still draw a plate it was given.
+The PNG carries the spec it was drawn from, in an `iTXt` chunk keyed `plate-spec`, so a call leaves one file in the
+project and nothing a build reads. Call again with `spec` set to that PNG and the plate is laid out, measured and
+written with no model; add a `brief` ("rename the root to CraftRuntimeRoot", "move the watch to the project lane")
+and the host's model makes that change on the spec first.
 
 ## Adding a kind of box
 

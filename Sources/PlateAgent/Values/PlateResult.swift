@@ -1,11 +1,11 @@
 import Foundation
 
-/// What a call answers: the PNG written and the spec beside it, how big the PNG is, how many rounds it took,
+/// What a call answers: the PNG written (its spec inside it), how big the PNG is, how many rounds it took,
 /// and what the last round still found. The spec itself is in the file, so a host's model reads a short answer.
 public struct PlateResult: Codable, Sendable, Equatable {
     /// The PNG, as an absolute path.
     public var path: String
-    /// The PNG and the spec written beside it (`<name>.plate.json`): what a host counts as the work's changes.
+    /// What the call wrote: the PNG. What a host counts as the work's changes.
     public var paths: [String]
     /// In pixels: twice the plate's CSS size.
     public var width: Int

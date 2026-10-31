@@ -20,7 +20,9 @@ final class PlateRendererTests: XCTestCase {
         XCTAssertEqual(result.width, 3200, "twice the page's 1600")
         XCTAssertEqual(Double(result.height), 3142, accuracy: 3142 * 0.12, "about as tall as flow.png")
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.path))
-        XCTAssertEqual(result.paths.map { URL(fileURLWithPath: $0).lastPathComponent }, ["flow.png", "flow.plate.json"])
+        XCTAssertEqual(result.paths.map { URL(fileURLWithPath: $0).lastPathComponent }, ["flow.png"], "one file, its spec inside it")
+        let carried = try XCTUnwrap(PlatePNG.embedded(in: Data(contentsOf: URL(fileURLWithPath: result.path))))
+        XCTAssertEqual(try JSONDecoder().decode(PlateSpec.self, from: Data(carried.utf8)).title, "One turn, every service")
         XCTAssertEqual(result.findings, [], "the flow plate measures clean")
     }
 }

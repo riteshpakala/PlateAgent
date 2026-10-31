@@ -23,7 +23,7 @@ final class PlateLoopTests: XCTestCase {
         let result = try JSONDecoder().decode(PlateResult.self, from: answer)
         XCTAssertEqual(result.rounds, 2, "the first draft overflowed; the second measured clean")
         XCTAssertEqual(result.findings, [])
-        XCTAssertEqual(result.paths.map { URL(fileURLWithPath: $0).lastPathComponent }, ["one-turn-every-service.png", "one-turn-every-service.plate.json"],
+        XCTAssertEqual(result.paths.map { URL(fileURLWithPath: $0).lastPathComponent }, ["one-turn-every-service.png"],
                        "named for the title, in the folder: the project has no pictures folder")
         XCTAssertTrue(result.paths.allSatisfy { FileManager.default.fileExists(atPath: $0) })
         let asked = model.asked
@@ -54,4 +54,22 @@ final class PlateLoopTests: XCTestCase {
         XCTAssertTrue(result.path.hasSuffix("docs/README_Assets/one-turn-every-service.png"), "the project's pictures folder, when it has one")
         XCTAssertEqual(result.rounds, 1)
     }
+
+    func testAPlateIsChangedFromItsPNGByABrief() async throws {
+        let folder = try Fixture.folder()
+        let first = try JSONDecoder().decode(PlateResult.self, from: await AnyAgentPackage(PlateAgent.self).perform(
+            Data(#"{"spec": "\#(try Fixture.write(Fixture.flow, to: folder).path)", "output": "flow.png", "directory": "\#(folder.path)"}"#.utf8)))
+        var renamed = Fixture.flow
+        renamed.title = "Every service, one turn"
+        let model = FakeHostModel([try json(renamed)])
+        let answer = try await AnyAgentPackage(PlateAgent.self).perform(
+            Data(#"{"spec": "flow.png", "brief": "swap the title's halves", "output": "flow.png", "directory": "\#(folder.path)"}"#.utf8),
+            host: AgentHost(directory: folder.path, model: model))
+        let result = try JSONDecoder().decode(PlateResult.self, from: answer)
+        XCTAssertEqual(result.path, first.path)
+        XCTAssertEqual(result.title, "Every service, one turn", "the brief was made on the spec the PNG carried")
+        XCTAssertTrue(model.asked.first?.user.contains("swap the title's halves") == true)
+        XCTAssertTrue(model.asked.first?.user.contains("One turn, every service") == true, "the model saw the spec the PNG carried")
+    }
+
 }

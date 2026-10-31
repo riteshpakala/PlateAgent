@@ -72,6 +72,14 @@ enum PlateDraft {
         return parts.joined(separator: "\n\n")
     }
 
+    /// What a brief asks of a plate drawn before.
+    static func change(_ spec: PlateSpec, brief: String) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let json = (try? encoder.encode(spec)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return "The spec of a plate drawn before:\n\(json)\n\nWhat to change: \(brief)\n\nWrite the whole spec again, changed as asked and nothing else."
+    }
+
     static func revise(_ spec: PlateSpec, findings: [PlateFinding]) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

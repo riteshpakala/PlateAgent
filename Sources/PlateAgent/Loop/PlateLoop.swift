@@ -3,7 +3,7 @@ import GraniteAgents
 
 /// One call, from the ask to the PNG: read the sources, draft the spec on the host's model, then a round at a time
 /// draw it — check, grid, measure, lay out, render, measure again — and hand what was found back to the model to
-/// fix, until it measures clean or the rounds are spent. The best round is written: the PNG, and the spec beside it.
+/// fix, until it measures clean or the rounds are spent. The best round is written: the PNG, the spec inside it.
 ///
 /// PIN: the model decides what the plate says; it never places anything. Where a box goes, how an arrow runs and
 /// whether a label is clear are the layout's and WebKit's facts, and what the model hears back is those facts as
@@ -22,8 +22,19 @@ struct PlateLoop: Sendable {
         if let path = input.spec {
             let url = PlateSources.resolve(path, in: folder)
             guard let data = try? Data(contentsOf: url) else { throw PlateError.spec("no file at \(url.path)") }
-            do { spec = try JSONDecoder().decode(PlateSpec.self, from: data) } catch { throw PlateError.spec("\(error)") }
+            // A plate's PNG carries the spec it was drawn from; a JSON is a spec as written.
+            let json = url.pathExtension.lowercased() == "png" ? PlatePNG.embedded(in: data).map { Data($0.utf8) } : data
+            guard let json else { throw PlateError.spec("\(url.lastPathComponent) carries no plate spec") }
+            do { spec = try JSONDecoder().decode(PlateSpec.self, from: json) } catch { throw PlateError.spec("\(error)") }
             model = host.model
+            // A spec and a brief: what the brief asks of the plate, made on the spec before it is drawn again.
+            if let brief = input.brief, !brief.isEmpty, let model {
+                host.note("changing the plate: \(brief.prefix(80))")
+                if let changed = try? await ask(model, system: PlateDraft.reviseSystem, user: PlateDraft.change(spec, brief: brief)),
+                   !changed.lanes.isEmpty, !changed.nodes.isEmpty {
+                    spec = changed
+                }
+            }
         } else {
             guard let offered = host.model else { throw PlateError.noModel }
             model = offered
@@ -77,18 +88,17 @@ struct PlateLoop: Sendable {
         }
     }
 
-    /// The PNG and the spec beside it, where `output` says or where a project keeps its pictures.
+    /// The PNG, carrying the spec it was drawn from, where `output` says or where a project keeps its pictures.
     private func write(_ spec: PlateSpec, _ rendered: PlateRendered, findings: [PlateFinding], rounds: Int, folder: URL) throws -> PlateResult {
         let png = Self.output(input.output, folder: folder, title: spec.title)
-        let json = png.deletingPathExtension().appendingPathExtension("plate.json")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let json = (try? encoder.encode(spec)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         do {
             try FileManager.default.createDirectory(at: png.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try rendered.png.write(to: png)
+            try PlatePNG.embedding(json, in: rendered.png).write(to: png)
         } catch { throw PlateError.unwritable(png.path) }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        do { try encoder.encode(spec).write(to: json) } catch { throw PlateError.unwritable(json.path) }
-        return PlateResult(path: png.path, paths: [png.path, json.path], width: rendered.width, height: rendered.height, rounds: rounds,
+        return PlateResult(path: png.path, paths: [png.path], width: rendered.width, height: rendered.height, rounds: rounds,
                            findings: findings.map(\.sentence), title: spec.title, lanes: spec.lanes.count, nodes: spec.nodes.count,
                            edges: spec.edges.count)
     }
