@@ -48,7 +48,17 @@ struct PlateLoop: Sendable {
             if let read = sources.graph, read.parts.count >= 2 {
                 graph = read
                 host.note("planning the plate from \(read.parts.count) parts and \(read.references.count) references")
-                let planned = try await askPlan(offered, system: PlateDraft.planSystem, user: user)
+                var planned = try await askPlan(offered, system: PlateDraft.planSystem, user: user)
+                // What walks is what the entry part is sent, never the part's own name: asked again, of that part alone.
+                if let entry = PlateCompose.entry(planned, graph: read), PlateCompose.isStem(planned.unit, of: entry.name, kind: read.kind) {
+                    host.note("asking what one \(entry.name) is sent")
+                    if let words = try? await askWords(offered, entry: entry, project: read.project ?? folder.lastPathComponent),
+                       !PlateCompose.isStem(words.unit, of: entry.name, kind: read.kind) {
+                        planned.unit = words.unit ?? planned.unit
+                        planned.start = words.start ?? planned.start
+                        planned.end = words.end ?? planned.end
+                    }
+                }
                 plan = planned
                 spec = PlateCompose.spec(planned, graph: read)
             } else {
@@ -115,6 +125,17 @@ struct PlateLoop: Sendable {
     static func tidied(_ spec: PlateSpec, findings: [PlateFinding]) -> PlateSpec? {
         var spec = spec
         var changed = false
+        // A code line wider than its box loses operations from its end until it fits: it lists them, most used first.
+        for finding in findings where finding.kind == .overflow && finding.element.hasPrefix("node:") && finding.sentence.contains("code line") {
+            guard let i = spec.nodes.firstIndex(where: { "node:" + $0.id == finding.element }), let code = spec.nodes[i].code,
+                  finding.numbers.count == 2, finding.numbers[0] > 0 else { continue }
+            var parts = code.components(separatedBy: " · ")
+            let fits = Int(Double(code.count) * Double(finding.numbers[1]) / Double(finding.numbers[0]))
+            while parts.count > 1, parts.joined(separator: " · ").count > fits { parts.removeLast() }
+            guard parts.joined(separator: " · ") != code else { continue }
+            spec.nodes[i].code = parts.joined(separator: " · ")
+            changed = true
+        }
         for finding in findings where finding.kind == .overlap {
             for element in [finding.element, finding.other].compactMap({ $0 }) where element.hasPrefix("wire:") {
                 guard let n = Int(element.dropFirst(5)), spec.edges.indices.contains(n - 1), spec.edges[n - 1].number == nil,
@@ -124,6 +145,24 @@ struct PlateLoop: Sendable {
             }
         }
         return changed ? spec : nil
+    }
+
+    /// The walk's three words, asked of the part the walk enters alone: what it is sent, what starts one, what one leaves.
+    private func askWords(_ model: any AgentHostModel, entry: PlateGraph.Part, project: String) async throws -> PlatePlan {
+        let stem = PlateCompose.stem(entry.name, kind: nil)
+        let user = """
+        In \(project), a flow enters \(entry.name).
+        What it says it is: \(entry.what ?? "(no line)")
+        Its operations: \(entry.operations.joined(separator: ", "))
+        One \(entry.name) holds many of what it is sent, one after another. In the code's own words, one or two words each, lowercase:
+        - `unit`: what is one of those? Never "\(stem)".
+        - `start`: what does a person give it to begin one?
+        - `end`: what does one leave behind for the next?
+        """
+        let schema = Data(#"{"type":"object","required":["unit","start","end"],"properties":{"unit":{"type":"string"},"start":{"type":"string"},"end":{"type":"string"}}}"#.utf8)
+        let data = try await model.object(schema: schema, system: "You name what flows through one part of a software system. Answer with one compact JSON object.",
+                                          user: user, maxTokens: 120, seconds: 60)
+        return try JSONDecoder().decode(PlatePlan.self, from: data)
     }
 
     private func askPlan(_ model: any AgentHostModel, system: String, user: String) async throws -> PlatePlan {

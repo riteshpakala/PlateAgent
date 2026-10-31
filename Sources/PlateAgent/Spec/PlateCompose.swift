@@ -31,7 +31,7 @@ enum PlateCompose {
             guard let index = lanes.firstIndex(of: lane) else { return false }
             return lane.beside == true || (index + 1 < lanes.count && lanes[index + 1].beside == true)
         }
-        func width(of lane: PlatePlan.Lane) -> Int { half(lane) ? 32 : (lane.boxes.count >= 4 ? 36 : 44) }
+        func width(of lane: PlatePlan.Lane) -> Int { half(lane) ? 27 : (lane.boxes.count >= 4 ? 36 : 44) }
         func dutyLimit(of lane: PlatePlan.Lane) -> Int {
             let across = Double(max(1, half(lane) ? min(2, lane.boxes.count) : min(4, lane.boxes.count)))
             let line = Int(((half(lane) ? 640.0 : 1330.0) / across - 40) / 7.4)
@@ -246,6 +246,29 @@ enum PlateCompose {
             .filter { starter in !into.contains { resolve($0.from) == starter.name } }
             .map { PlatePlan.Step(from: $0.name, to: root) }
         return into + entering + steps.filter { step in !into.contains(step) }
+    }
+
+    /// The part the walk enters: where its first step out of the root goes, else the first part of the first lane.
+    static func entry(_ plan: PlatePlan, graph: PlateGraph) -> PlateGraph.Part? {
+        let parts = Dictionary(graph.parts.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })
+        if let root = graph.root, let step = plan.walk.first(where: { $0.from == root }), let part = parts[step.to] { return part }
+        return plan.lanes.first?.boxes.lazy.compactMap { parts[$0] }.first
+    }
+
+    /// `SessionService` → `session`: the name without the kind its parts share.
+    static func stem(_ name: String, kind: String?) -> String {
+        var stem = name
+        for suffix in [kind, "Service", "Manager", "Controller", "Store"].compactMap({ $0 }) where stem.hasSuffix(suffix) && stem.count > suffix.count {
+            stem = String(stem.dropLast(suffix.count)); break
+        }
+        return stem.lowercased()
+    }
+
+    /// Whether `word` is the part's own name (`session`, `sessions` for SessionService).
+    static func isStem(_ word: String?, of name: String, kind: String?) -> Bool {
+        guard let word = word?.lowercased().trimmingCharacters(in: .whitespaces), !word.isEmpty else { return false }
+        let stem = stem(name, kind: kind)
+        return word == stem || word == stem + "s" || word.hasSuffix(" " + stem)
     }
 
     // MARK: Header

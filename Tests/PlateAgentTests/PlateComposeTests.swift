@@ -85,6 +85,29 @@ final class PlateComposeTests: XCTestCase {
                        "a header word the example gave is not this project's")
     }
 
+    /// What walks is never the entry part's own name: "session" for SessionService is asked again.
+    func testTheWalksUnitIsNotTheEntryPartsName() {
+        XCTAssertTrue(PlateCompose.isStem("session", of: "SessionService", kind: "Service"))
+        XCTAssertTrue(PlateCompose.isStem("Sessions", of: "SessionService", kind: "Service"))
+        XCTAssertTrue(PlateCompose.isStem("open session", of: "SessionService", kind: "Service"))
+        XCTAssertFalse(PlateCompose.isStem("turn", of: "SessionService", kind: "Service"))
+        XCTAssertFalse(PlateCompose.isStem(nil, of: "SessionService", kind: "Service"))
+        var graph = self.graph
+        graph.root = "AppRoot"
+        let plan = PlatePlan(lanes: [.init(id: "turn", name: "a turn", colour: .blue, boxes: ["ModelService", "SessionService"])],
+                             walk: [.init(from: "app", to: "AppRoot"), .init(from: "AppRoot", to: "SessionService")])
+        XCTAssertEqual(PlateCompose.entry(plan, graph: graph)?.name, "SessionService", "where the walk leaves the root")
+        XCTAssertEqual(PlateCompose.entry(PlatePlan(lanes: plan.lanes), graph: graph)?.name, "ModelService", "else the first part of the first lane")
+    }
+
+    func testACodeLineWiderThanItsBoxLosesOperationsFromItsEnd() {
+        var spec = PlateSpec(caption: "c", title: "t", subtitle: "s", lanes: [PlateLane(id: "a", name: "a", colour: .blue)],
+                             nodes: [PlateNode(id: "watch", lane: "a", name: "WatchService", code: "Attach · Index · Warm · Refile")])
+        spec.edges = []
+        let finding = PlateFinding(.overflow, "node:watch", numbers: [208, 196], "box WatchService: its code line is 208 px wide in a box of 196")
+        XCTAssertEqual(PlateLoop.tidied(spec, findings: [finding])?.nodes.first?.code, "Attach · Index · Warm")
+    }
+
     func testTheCodesOwnLineReadsAsADuty() {
         let rows: [(String, String)] = [
             ("The sessions, as a service: every session open in this process — a session opened, a turn sent.", "the sessions: every session open in this process"),
