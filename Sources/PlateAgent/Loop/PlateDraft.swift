@@ -55,6 +55,53 @@ enum PlateDraft {
      "legend": "Each box is a **module**; its line says what it owns. Solid arrows are calls; {gold:dashed gold} is a model's run and what it writes back; dashed grey is a process across a wire. The numbers walk one request."}
     """
 
+    /// What the model is told when the code's graph is known: plan, and the kit composes.
+    static let planRules = """
+    You plan one editorial plate of a software system: which of its parts go in which lane, the walk the numbers take, and the words. The kit composes the plate from your plan and the code's own graph — each box's code line, its agents, the arrows the code has — so you write only what the graph cannot say. Answer with the plan, one compact JSON object.
+
+    - Lanes run top to bottom in the order the thing flows. First the front ends that start the parts (from "What starts them": an app, a command line, its pages), then the root that holds the parts, both "dial". Then the parts, a lane per rank, highest rank first; the lowest rank may split into two lanes `beside` each other by what they work on. Three to six lanes, each named for what its boxes are ("the front ends", "the root", "a turn", "the project", "the machine"), each "dial" or one of "blue", "green", "orange", "violet", "red".
+    - `boxes` are names exactly as the graph writes them: its parts, and the starters you want as front ends or root. Put every part of the graph in a lane. At most four boxes in a lane; a lane beside another sets them two by two. A part's agents are drawn under it for you; never list them as boxes.
+    - `walk` is the one path the person asked about, in the order it happens, four to twelve steps, each from a box to a box: one of the graph's references, a starter calling a part it names, or a part running one of its agents (by the agent's name). Leave `label` out where the graph's calls say it.
+    - `duties`: for a part whose line in the graph is long or reads badly, one sentence of what it is responsible for and nothing else (at most 90 characters), by its name. Skip the rest.
+    - `externals`: what the parts reach across a wire (an engine, a server, a store), each `under` the part that reaches it, with a few words of `what`.
+    - `caption` is "RAO STUDIOS · <PROJECT> · THE <WHAT>". `title` is a short editorial sentence with a turn of phrase, never a label (at most 30 characters): "One turn, every service", "One request, every layer" — not "Service pattern flow". `subtitle` is the thesis in one line (at most 100 characters). `heading` names the walk. `machine` is two to five words in capitals. `tag` says where every box lives. `legend` says what a box is, what each stroke means and what the numbers walk; `**term**` and `{gold:dashed gold}` are allowed.
+    - A lane may carry a `note`: one line no box says, what holds the lane together.
+    - Use only names the graph has, or what the person asked for: never a part the code does not have.
+    """
+
+    /// A plan for another system: what the model copies the shape of.
+    static let planExample = #"""
+    {"caption":"RAO STUDIOS · ATELIER · THE REQUEST","title":"One request, every layer","subtitle":"from the click to the stored post: what each layer owns, in the order a request passes through it","heading":"A request, through the layers","machine":"ONE CLICK, END TO END","tag":"every box is a module in app/ and lib/","lanes":[{"id":"edge","name":"the edge","colour":"dial","boxes":["PostPage","Middleware"]},{"id":"root","name":"the root","colour":"dial","boxes":["AppServer"],"note":"{dial:on boot:} the stores open, the cache warms"},{"id":"server","name":"the server","colour":"blue","boxes":["SaveAction","PostCache"]},{"id":"data","name":"the data","colour":"green","boxes":["PostStore","SearchIndex"]},{"id":"outside","name":"the outside","colour":"orange","beside":true,"boxes":["MailQueue"]}],"duties":{"PostCache":"keeps rendered posts until one is written"},"walk":[{"from":"PostPage","to":"AppServer","label":"request"},{"from":"AppServer","to":"SaveAction"},{"from":"SaveAction","to":"PostStore"},{"from":"SaveAction","to":"summarize"},{"from":"PostStore","to":"SearchIndex"},{"from":"SaveAction","to":"PostCache","label":"invalidate"}],"externals":[{"name":"Postgres","under":"PostStore","what":"the posts' rows"}],"legend":"Each box is a **module**; its line says what it owns. Solid arrows are calls; {gold:dashed gold} is a model's run and what it writes back; dashed grey is a process across a wire. The numbers walk one request."}
+    """#
+
+    static var planSystem: String { planRules + "\n\nA plan for another system, to copy the shape of and never the names:\n" + planExample }
+
+    static var planReviseSystem: String {
+        planRules + "\n\nYou are fixing a plan you wrote, after its plate was composed, drawn and measured. Keep everything the findings do not name; make the fewest changes that clear every finding (move a box to another lane, drop a step of the walk, shorten a duty). Answer with the whole plan, fixed."
+    }
+
+    static func revise(_ plan: PlatePlan, findings: [PlateFinding]) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let json = (try? encoder.encode(plan)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return "The plan you wrote:\n\(json)\n\nWhat the composed plate measured:\n" + findings.prefix(16).map { "- " + $0.sentence }.joined(separator: "\n")
+            + "\n\nWrite the whole plan again, fixed."
+    }
+
+    static let planSchema: Data = {
+        let text: [String: Any] = ["type": "string"]
+        let colour: [String: Any] = ["type": "string", "enum": PlateColour.allCases.map(\.rawValue)]
+        let lane: [String: Any] = ["type": "object", "required": ["id", "name", "colour", "boxes"], "properties": [
+            "id": text, "name": text, "colour": colour, "beside": ["type": "boolean"], "note": text, "boxes": ["type": "array", "items": text]]]
+        let step: [String: Any] = ["type": "object", "required": ["from", "to"], "properties": ["from": text, "to": text, "label": text]]
+        let external: [String: Any] = ["type": "object", "required": ["name", "under"], "properties": ["name": text, "under": text, "what": text]]
+        let plan: [String: Any] = ["type": "object", "required": ["caption", "title", "subtitle", "lanes", "walk"], "properties": [
+            "caption": text, "title": text, "subtitle": text, "heading": text, "machine": text, "tag": text, "legend": text,
+            "lanes": ["type": "array", "items": lane], "duties": ["type": "object", "additionalProperties": text],
+            "walk": ["type": "array", "items": step], "externals": ["type": "array", "items": external]]]
+        return (try? JSONSerialization.data(withJSONObject: plan, options: [.sortedKeys])) ?? Data("{}".utf8)
+    }()
+
     static var draftSystem: String {
         rules + "\n\nA plate of another system, to copy the shape of and never the names:\n" + example
     }

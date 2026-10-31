@@ -19,6 +19,9 @@ struct PlateLoop: Sendable {
         let rounds = min(max(input.rounds ?? 3, 1), 6)
         var model: (any AgentHostModel)?
         var spec: PlateSpec
+        // With the code's graph, the model plans and the package composes; without one, the model writes the spec.
+        var plan: PlatePlan?
+        var graph: PlateGraph?
         if let path = input.spec {
             let url = PlateSources.resolve(path, in: folder)
             guard let data = try? Data(contentsOf: url) else { throw PlateError.spec("no file at \(url.path)") }
@@ -41,9 +44,17 @@ struct PlateLoop: Sendable {
             let sources = PlateSources.read(input.sources ?? [], in: folder)
             yield(.read(files: sources.files, characters: sources.digest.count))
             host.note("read \(sources.files) file\(sources.files == 1 ? "" : "s") under \((input.sources ?? []).joined(separator: ", ").nonEmpty ?? folder.lastPathComponent)")
-            host.note("drafting the plate: lanes, boxes, arrows")
-            spec = try await ask(offered, system: PlateDraft.draftSystem,
-                                 user: PlateDraft.draft(ask: host.ask, brief: input.brief, project: folder.lastPathComponent, sources: sources))
+            let user = PlateDraft.draft(ask: host.ask, brief: input.brief, project: folder.lastPathComponent, sources: sources)
+            if let read = sources.graph, read.parts.count >= 2 {
+                graph = read
+                host.note("planning the plate from \(read.parts.count) parts and \(read.references.count) references")
+                let planned = try await askPlan(offered, system: PlateDraft.planSystem, user: user)
+                plan = planned
+                spec = PlateCompose.spec(planned, graph: read)
+            } else {
+                host.note("drafting the plate: lanes, boxes, arrows")
+                spec = try await ask(offered, system: PlateDraft.draftSystem, user: user)
+            }
             yield(.drafted(spec))
         }
         guard !spec.lanes.isEmpty, !spec.nodes.isEmpty else {
@@ -57,7 +68,7 @@ struct PlateLoop: Sendable {
             last = round
             let normal = spec.normalized()
             let checked = normal.check()
-            let drawn = PlateOrder.ordered(normal.clamped())
+            let drawn = PlateLayout.pruned(PlateOrder.ordered(normal.clamped()))
             let grid = PlateGrid.make(drawn)
             let measures = try await context.compute.measures(drawn, grid: grid)
             let layout = PlateLayout.make(drawn, grid: grid, measures: measures)
@@ -69,14 +80,31 @@ struct PlateLoop: Sendable {
             host.note(found.isEmpty ? "round \(round): measured clean" : "round \(round): \(found.count) to fix — \(found[0].sentence)")
             if best == nil || found.count <= best!.findings.count { best = (drawn, rendered, found, round) }
             guard !found.isEmpty, round < rounds, let model else { break }
-            host.note("revising the spec")
-            guard let revised = try? await ask(model, system: PlateDraft.reviseSystem, user: PlateDraft.revise(normal, findings: found)),
-                  !revised.lanes.isEmpty, !revised.nodes.isEmpty else { break }
-            spec = revised
+            if let current = plan, let graph {
+                host.note("revising the plan")
+                guard let revised = try? await askPlan(model, system: PlateDraft.planReviseSystem, user: PlateDraft.revise(current, findings: found)),
+                      !revised.lanes.isEmpty else { break }
+                plan = revised
+                spec = PlateCompose.spec(revised, graph: graph)
+            } else {
+                host.note("revising the spec")
+                guard let revised = try? await ask(model, system: PlateDraft.reviseSystem, user: PlateDraft.revise(normal, findings: found)),
+                      !revised.lanes.isEmpty, !revised.nodes.isEmpty else { break }
+                spec = revised
+            }
             yield(.revised(round: round))
         }
         guard let best else { throw PlateError.render("no round drew") }
         return try write(best.spec, best.rendered, findings: best.findings, rounds: last, folder: folder)
+    }
+
+    private func askPlan(_ model: any AgentHostModel, system: String, user: String) async throws -> PlatePlan {
+        let data = try await model.object(schema: PlateDraft.planSchema, system: system, user: user, maxTokens: 2_500, seconds: 300)
+        do {
+            return try JSONDecoder().decode(PlatePlan.self, from: data)
+        } catch {
+            throw AgentHostError.answer("\(error)")
+        }
     }
 
     private func ask(_ model: any AgentHostModel, system: String, user: String) async throws -> PlateSpec {

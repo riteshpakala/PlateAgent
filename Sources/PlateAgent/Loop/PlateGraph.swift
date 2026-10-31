@@ -24,12 +24,15 @@ struct PlateGraph: Sendable {
         let to: String
         let count: Int
         let example: String
+        /// What `from` calls on `to`, most used first: `transcripts.center.open.send(…)` is `open`.
+        var calls: [String] = []
     }
 
     struct Starter: Sendable, Equatable {
         let name: String
         let path: String
         let parts: [String]
+        var what: String? = nil
     }
 
     var parts: [Part] = []
@@ -137,7 +140,10 @@ struct PlateGraph: Sendable {
                         if example == nil || (example!.count > 110 && trimmed.count <= 110) { example = String(trimmed.prefix(140)) }
                     }
                 }
-                if count > 0 { graph.references.append(Reference(from: from, to: to, count: count, example: example ?? "")) }
+                if count > 0 {
+                    let fromText = (filesOf[from] ?? []).compactMap { texts[$0] }.joined(separator: "\n")
+                    graph.references.append(Reference(from: from, to: to, count: count, example: example ?? "", calls: calls(from: fromText, to: to)))
+                }
             }
         }
         graph.rank()
@@ -172,16 +178,16 @@ struct PlateGraph: Sendable {
     /// the parts.
     static func starters(of parts: Set<String>, texts: [URL: String], root: URL) -> [Starter] {
         guard !parts.isEmpty else { return [] }
-        var found: [String: (path: String, parts: Set<String>)] = [:]
+        var found: [String: (path: String, parts: Set<String>, what: String?)] = [:]
         let words = parts.map { ($0, try? NSRegularExpression(pattern: "\\b" + NSRegularExpression.escapedPattern(for: $0) + "\\b")) }
         for (file, text) in texts {
             let range = NSRange(text.startIndex..., in: text)
             let named = Set(words.compactMap { name, regex in regex?.firstMatch(in: text, range: range) != nil ? name : nil })
             guard named.count >= 2 else { continue }
             let name = declaredTypes(text).first ?? file.deletingPathExtension().lastPathComponent
-            found[name, default: (relative(file, to: root), [])].parts.formUnion(named)
+            found[name, default: (relative(file, to: root), [], what(of: text, type: name))].parts.formUnion(named)
         }
-        return found.map { Starter(name: $0.key, path: $0.value.path, parts: $0.value.parts.sorted()) }
+        return found.map { Starter(name: $0.key, path: $0.value.path, parts: $0.value.parts.sorted(), what: $0.value.what) }
             .sorted { $0.parts.count == $1.parts.count ? $0.name < $1.name : $0.parts.count > $1.parts.count }
             .prefix(8).map { $0 }
     }
@@ -197,6 +203,34 @@ struct PlateGraph: Sendable {
         guard let best = counts.max(by: { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }),
               best.value >= 2, Double(best.value) >= Double(names.count) / 2 else { return nil }
         return best.key
+    }
+
+    /// Words that say how something is called, not what is called: Granite's plumbing and a value's own.
+    private static let plumbing: Set<String> = ["center", "state", "send", "perform", "attach", "events", "wait", "value", "shared", "init",
+                                                "self", "Center", "Meta", "Reducer", "State", "Type", "isLive", "description", "set", "Set", "reply", "Reply"]
+
+    /// What `text` calls on `type`: the members it reaches through a variable of that type (`transcripts.center.open`
+    /// is `open`) or on the type itself (`WatchService.engine` is `engine`), most used first, three at most.
+    static func calls(from text: String, to type: String) -> [String] {
+        let range = NSRange(text.startIndex..., in: text)
+        let escaped = NSRegularExpression.escapedPattern(for: type)
+        var names: Set<String> = []
+        if let declaration = try? NSRegularExpression(pattern: #"\b(\w+)\s*:\s*(?:\w+\.)*"# + escaped + #"\b"#) {
+            for match in declaration.matches(in: text, range: range) {
+                if let r = Range(match.range(at: 1), in: text) { names.insert(String(text[r])) }
+            }
+        }
+        var counts: [String: Int] = [:]
+        let receivers = names.map(NSRegularExpression.escapedPattern(for:)) + [escaped]
+        for receiver in receivers {
+            guard let use = try? NSRegularExpression(pattern: #"\b"# + receiver + #"\.(?:center\.)?([a-zA-Z_]\w*)"#) else { continue }
+            for match in use.matches(in: text, range: range) {
+                guard let r = Range(match.range(at: 1), in: text) else { continue }
+                let member = String(text[r])
+                if !plumbing.contains(member) { counts[member, default: 0] += 1 }
+            }
+        }
+        return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.prefix(3).map(\.key)
     }
 
     // MARK: What the code says
@@ -229,8 +263,16 @@ struct PlateGraph: Sendable {
     /// The type's own doc comment, or the file's WHAT, as one sentence.
     static func what(of text: String, type: String) -> String? {
         let lines = text.components(separatedBy: .newlines)
-        if let what = lines.first(where: { $0.hasPrefix("//  WHAT:") || $0.hasPrefix("// WHAT:") }) {
-            return sentence(String(what.split(separator: ":", maxSplits: 1).last ?? "").trimmingCharacters(in: .whitespaces))
+        if let start = lines.firstIndex(where: { $0.hasPrefix("//  WHAT:") || $0.hasPrefix("// WHAT:") }) {
+            // The header wraps: its continuation lines run until the next key (IN:, OUT:, PIN:) or the end of the comment.
+            var text = String(lines[start].split(separator: ":", maxSplits: 1).last ?? "").trimmingCharacters(in: .whitespaces)
+            for line in lines.dropFirst(start + 1) {
+                guard line.hasPrefix("//") else { break }
+                let body = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
+                if body.isEmpty || body.firstMatch(of: #/^[A-Z]{2,}:/#) != nil { break }
+                text += " " + body
+            }
+            return sentence(text)
         }
         guard let at = lines.firstIndex(where: { declaredTypes($0).first == type }) else { return nil }
         var doc: [String] = []
@@ -243,9 +285,15 @@ struct PlateGraph: Sendable {
         return doc.isEmpty ? nil : sentence(doc.joined(separator: " "))
     }
 
+    /// The first sentence, whole: a cut is the composer's, at a clause.
     private static func sentence(_ text: String) -> String {
-        let end = text.firstIndex { $0 == "." || $0 == ";" } ?? text.endIndex
-        return String(text[..<end].prefix(160)).trimmingCharacters(in: .whitespaces)
+        String(firstSentence(text).prefix(400)).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Up to the first `.` or `;` that ends a sentence (a space or the end after it), never the dot of `Craft.app`.
+    static func firstSentence(_ text: String) -> String {
+        guard let match = text.firstMatch(of: #/[.;](\s|$)/#) else { return text }
+        return String(text[..<match.range.lowerBound])
     }
 
     private static let functionLine = try! NSRegularExpression(
@@ -284,13 +332,14 @@ struct PlateGraph: Sendable {
             var line = "- \(part.name) · \(part.path) · rank \(part.rank)" + (part.beside ? " · beside the sources" : "")
             if !part.operations.isEmpty { line += " · operations: " + part.operations.joined(separator: " · ") }
             if !part.agents.isEmpty { line += " · agents: " + part.agents.joined(separator: ", ") }
-            if let what = part.what, !what.isEmpty { line += "\n  " + what }
+            if let what = part.what, !what.isEmpty { line += "\n  " + (what.count > 220 ? String(what.prefix(219)) + "…" : what) }
             out.append(line)
         }
         if !references.isEmpty {
             out.append("\n## Who refers to whom (draw arrows only from these; ×n is how often, then a line that shows how)")
             for reference in references.sorted(by: { $0.count == $1.count ? ($0.from, $0.to) < ($1.from, $1.to) : $0.count > $1.count }).prefix(40) {
-                out.append("- \(reference.from) → \(reference.to) ×\(reference.count): `\(reference.example)`")
+                out.append("- \(reference.from) → \(reference.to) ×\(reference.count)"
+                           + (reference.calls.isEmpty ? "" : " · calls " + reference.calls.joined(separator: ", ")) + ": `\(reference.example)`")
             }
         }
         if !starters.isEmpty {

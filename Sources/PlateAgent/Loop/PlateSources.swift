@@ -7,6 +7,8 @@ import Foundation
 struct PlateSources: Sendable {
     let digest: String
     let files: Int
+    /// The code's graph, when the sources are code: what a plan is composed against.
+    var graph: PlateGraph? = nil
 
     static let codeExtensions: Set<String> = ["swift", "ts", "tsx", "js", "jsx", "mjs", "py", "go", "rs", "kt", "java", "rb", "m", "mm", "h",
                                               "c", "cc", "cpp", "cs", "php", "scala", "ex", "exs", "md"]
@@ -30,19 +32,20 @@ struct PlateSources: Sendable {
             }
         }
         let urls = named.map { resolve($0, in: folder) }.filter { manager.fileExists(atPath: $0.path) }
-        let graph = PlateGraph.read(urls, root: folder).render()
+        let read = PlateGraph.read(urls, root: folder)
+        let graph = read.render()
         let ranked = Array(Self.rank(files, root: folder).prefix(graph.isEmpty ? maxFiles : maxFiles / 2))
         var digest = ([graph] + trees).filter { !$0.isEmpty }.joined(separator: "\n\n")
-        var read = 0
+        var count = 0
         for file in ranked {
             guard digest.count < limit, let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
             let said = summary(of: text, ext: file.pathExtension.lowercased())
             guard !said.isEmpty else { continue }
             let block = "\n\n## \(relative(file, to: folder))\n" + said
             digest += block.count + digest.count > limit ? String(block.prefix(max(0, limit - digest.count))) : block
-            read += 1
+            count += 1
         }
-        return PlateSources(digest: digest, files: read)
+        return PlateSources(digest: digest, files: count, graph: read.parts.isEmpty ? nil : read)
     }
 
     static func resolve(_ path: String, in folder: URL) -> URL {

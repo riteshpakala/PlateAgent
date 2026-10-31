@@ -164,6 +164,21 @@ struct PlateLayout: Sendable {
         return layout
     }
 
+    /// The spec without the arrows the walk does not need that no route can draw clear of the boxes: an unnumbered
+    /// arrow is the reader's aid, and one drawn through a box hurts more than it helps. Laid out with reckoned
+    /// heights, before WebKit measures; a numbered arrow always stays, and a crossing it makes is a finding.
+    static func pruned(_ spec: PlateSpec) -> PlateSpec {
+        var spec = spec
+        for _ in 0..<3 {
+            let grid = PlateGrid.make(spec)
+            let layout = make(spec, grid: grid, measures: .estimated(spec, grid: grid))
+            let crossing = Set(layout.routes.filter { !$0.crossings.isEmpty && spec.edges[$0.edge].number == nil }.map(\.edge))
+            guard !crossing.isEmpty else { break }
+            spec.edges = spec.edges.enumerated().filter { !crossing.contains($0.offset) }.map(\.element)
+        }
+        return spec
+    }
+
     /// A box's height: a service is what it says plus its foot; an agent is an agent's height; an external is
     /// what it says, padded.
     static func height(of node: PlateNode, _ measures: PlateMeasures) -> Double {

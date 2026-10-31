@@ -284,7 +284,9 @@ enum PlateRouter {
                 : [PlatePoint(x: p.x - w / 2, y: p.y + gap - 2), PlatePoint(x: p.x - w / 2, y: p.y - gap - h + 2),
                    PlatePoint(x: p.x + gap, y: p.y + 6), PlatePoint(x: p.x + gap, y: p.y - h - 6),
                    PlatePoint(x: p.x - gap - w, y: p.y + 6), PlatePoint(x: p.x - gap - w, y: p.y - h - 6)]
-            let boxes = options.map { PlateBox(x: $0.x, y: $0.y, w: w, h: h) }
+            // Past the boxes around a short arrow: above and below them, centred on the arrow.
+            let further = [30.0, 46.0, 62.0].flatMap { d in [PlatePoint(x: p.x - w / 2, y: p.y + d), PlatePoint(x: p.x - w / 2, y: p.y - d - h)] }
+            let boxes = (options + further).map { PlateBox(x: $0.x, y: $0.y, w: w, h: h) }
             let chosen = boxes.first(where: clear) ?? boxes[0]
             routes[i].wire = chosen
             taken.append(chosen)
