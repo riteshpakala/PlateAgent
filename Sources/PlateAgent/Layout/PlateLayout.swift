@@ -168,10 +168,11 @@ struct PlateLayout: Sendable {
     /// with another of its lane, and the swap is kept when fewer arrows cross a box. The frame's lanes (dial) and a box
     /// that names its column stay. Laid out with reckoned heights, before WebKit measures.
     static func cleared(_ spec: PlateSpec) -> PlateSpec {
+        // What may move: the boxes an arrow crosses, and the arrow's own two ends.
         func crossings(_ spec: PlateSpec) -> (count: Int, crossed: Set<String>) {
             let grid = PlateGrid.make(spec)
             let routes = make(spec, grid: grid, measures: .estimated(spec, grid: grid)).routes.filter { !$0.crossings.isEmpty }
-            return (routes.count, Set(routes.flatMap(\.crossings)))
+            return (routes.count, Set(routes.flatMap { $0.crossings + [spec.edges[$0.edge].from, spec.edges[$0.edge].to] }))
         }
         var best = spec
         var score = crossings(spec)

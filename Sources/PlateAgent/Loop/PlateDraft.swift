@@ -95,6 +95,12 @@ enum PlateDraft {
         return Set([plan.unit, plan.start, plan.end].compactMap { $0?.lowercased() })
     }()
 
+    /// The worked example's lane names: a plan that gives one back copied it.
+    static let exampleLanes: Set<String> = {
+        guard let plan = try? JSONDecoder().decode(PlatePlan.self, from: Data(planExample.utf8)) else { return [] }
+        return Set(plan.lanes.map { $0.name.lowercased() })
+    }()
+
     private static let examplePairs: Set<String> = {
         var said: [String] = []
         if let plan = try? JSONDecoder().decode(PlatePlan.self, from: Data(planExample.utf8)) {

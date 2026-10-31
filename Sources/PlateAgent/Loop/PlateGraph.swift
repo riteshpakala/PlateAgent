@@ -35,6 +35,8 @@ struct PlateGraph: Sendable {
         var what: String? = nil
         /// The other starters it names: a front end reaching the root, an app's root reaching a service it holds.
         var reaches: [String] = []
+        /// What it calls on each it reaches, most used first: `CraftAppRoot` boots, opens and turns the root.
+        var calls: [String: [String]] = [:]
         /// What a person runs (a command line, an app: a product of the project), or a service a front end holds.
         var role: Role = .file
 
@@ -279,6 +281,19 @@ struct PlateGraph: Sendable {
             starters[i].reaches = names(all.filter { $0 != starters[i].name }, in: said).filter { name in
                 name == holder || starters.first { $0.name == name }?.role == .held
             }
+            // What it calls is read off its own file first: an extension's calls (`+Projects`) are its asides.
+            let own = texts[root.appendingPathComponent(starters[i].path).standardizedFileURL] ?? ""
+            for reached in starters[i].reaches {
+                let first = Self.calls(from: own, to: reached)
+                starters[i].calls[reached] = first.isEmpty ? Self.calls(from: said, to: reached) : first
+            }
+        }
+        // An entry's calls are its entry file's (`@main`, `main.swift`): the rest of its module is everything it runs.
+        for i in starters.indices where starters[i].role == .entry {
+            let module = root.appendingPathComponent(starters[i].path).standardizedFileURL.path + "/"
+            let own = texts.filter { $0.key.path.hasPrefix(module) }
+            let said = own.first { $0.value.contains("@main") }?.value ?? own.first { $0.key.lastPathComponent == "main.swift" }?.value ?? ""
+            for reached in starters[i].reaches { starters[i].calls[reached] = Self.calls(from: said, to: reached) }
         }
     }
 
@@ -362,6 +377,11 @@ struct PlateGraph: Sendable {
         let range = NSRange(text.startIndex..., in: text)
         let escaped = NSRegularExpression.escapedPattern(for: type)
         var names: Set<String> = []
+        if let assigned = try? NSRegularExpression(pattern: #"\b(?:let|var)\s+(\w+)\s*=\s*(?:\w+\.)*"# + escaped + #"\b"#) {
+            for match in assigned.matches(in: text, range: range) {
+                if let r = Range(match.range(at: 1), in: text) { names.insert(String(text[r])) }
+            }
+        }
         if let declaration = try? NSRegularExpression(pattern: #"\b(\w+)\s*:\s*(?:\w+\.)*"# + escaped + #"\b"#) {
             for match in declaration.matches(in: text, range: range) {
                 if let r = Range(match.range(at: 1), in: text) { names.insert(String(text[r])) }
@@ -508,7 +528,12 @@ struct PlateGraph: Sendable {
                 case .held: line += " · a service the front end holds · \(starter.path)"
                 case .file: line += starter.name == root ? " · the root: it holds \(starter.parts.count) of the \(parts.count) parts · \(starter.path)" : " · \(starter.path)"
                 }
-                if !starter.reaches.isEmpty { line += " → " + starter.reaches.joined(separator: ", ") }
+                if !starter.reaches.isEmpty {
+                    line += " → " + starter.reaches.map { reached in
+                        let calls = starter.calls[reached] ?? []
+                        return calls.isEmpty ? reached : "\(reached) (calls \(calls.joined(separator: ", ")))"
+                    }.joined(separator: ", ")
+                }
                 if starter.name != root, starter.role != .entry, !starter.parts.isEmpty { line += " · names " + starter.parts.joined(separator: ", ") }
                 if let what = starter.what, !what.isEmpty { line += "\n  " + (what.count > 220 ? String(what.prefix(219)) + "…" : what) }
                 out.append(line)

@@ -72,9 +72,14 @@ enum PlateCompose {
         }
         for external in plan.externals {
             let host = resolve(external.under)
-            // An agent is drawn under its part already: an external named for one (`Coder`, `WatchAgent`) is that agent.
-            let agent = ids.first { kinds[$0.value] == .agent && $0.key.lowercased() == external.name.lowercased() }
-            guard agent == nil, let hostID = ids[host], let hostNode = spec.nodes.first(where: { $0.id == hostID }), ids[external.name] == nil else { continue }
+            // An agent is drawn under its part already: an external named for one, or whose line names one (`Coder`,
+            // `WatchAgent`, "coder agent: runs turns"), is that agent.
+            let said = (external.name + " " + (external.what ?? "")).lowercased()
+            if let agent = ids.first(where: { kinds[$0.value] == .agent && (said.split { !$0.isLetter }.contains(Substring($0.key.lowercased()))) }) {
+                if ids[external.name] == nil { ids[external.name] = agent.value }
+                continue
+            }
+            guard let hostID = ids[host], let hostNode = spec.nodes.first(where: { $0.id == hostID }), ids[external.name] == nil else { continue }
             let id = unique(PlateLoose.slug(external.name), in: Set(ids.values))
             ids[external.name] = id
             kinds[id] = .external
@@ -100,7 +105,7 @@ enum PlateCompose {
         func colour(of id: String) -> PlateColour? { spec.nodes.first { $0.id == id }.flatMap { node in lanes.first { $0.id == node.lane }?.colour } }
         var number = 0
         var lastTarget: String?
-        for step in plan.walk {
+        for step in Self.walk(plan, graph: graph, lanes: lanes, resolve: resolve) {
             let from = resolve(step.from), to = resolve(step.to)
             guard let a = ids[from] ?? ids[step.from], let b = ids[to] ?? ids[step.to], a != b, !drawn.contains(key(a, b)) else { continue }
             // Two ways into one box, one after the other (the app and the command line into the root), share a number.
@@ -109,7 +114,8 @@ enum PlateCompose {
             drawn.insert(key(a, b))
             // The walk leaves the front ends and the root in gold, as the plate's own numbers are.
             let gold = colour(of: a) == .dial && lane(of: a) != lane(of: b) && style(a, b) == .solid
-            spec.edges.append(PlateEdge(from: a, to: b, label: step.label ?? label(graph, from, to, parts[to]), number: number <= 12 ? number : nil,
+            let called = starters[from]?.calls[to].flatMap { $0.isEmpty ? nil : $0.prefix(3).joined(separator: " · ") }
+            spec.edges.append(PlateEdge(from: a, to: b, label: step.label ?? called ?? label(graph, from, to, parts[to]), number: number <= 12 ? number : nil,
                                         style: style(a, b), colour: gold ? .gold : nil, both: kinds[b] == .external ? true : nil))
         }
         for node in spec.nodes where node.kind == .agent || node.kind == .external {
@@ -132,7 +138,8 @@ enum PlateCompose {
             for reached in starter.reaches {
                 guard let b = ids[reached], !drawn.contains(key(a, b)), let lb = lane(of: b) else { continue }
                 drawn.insert(key(a, b))
-                spec.edges.append(PlateEdge(from: a, to: b, colour: la == lb ? nil : .gold))
+                let called = starter.calls[reached].flatMap { $0.isEmpty ? nil : $0.prefix(3).joined(separator: " · ") }
+                spec.edges.append(PlateEdge(from: a, to: b, label: la == lb ? nil : called, colour: la == lb ? nil : .gold))
             }
         }
         // A starter with no arrow yet calls the highest part it names in the lane right under it.
@@ -216,7 +223,29 @@ enum PlateCompose {
            lanes[lanes.count - 2].beside != true {
             lanes[lanes.count - 1].beside = true
         }
+        // The walk's lane is named for what walks, as the header is; a name the worked example gave is not this plan's.
+        let exampleLanes = PlateDraft.exampleLanes
+        for i in lanes.indices where exampleLanes.contains(lanes[i].name.lowercased()) {
+            lanes[i].name = i == lanes.count - 1 && i > 0 ? "what all share" : "what each keeps"
+        }
+        if !lanes.isEmpty {
+            let unit = header(word: plan.unit, fallback: "request")
+            lanes[0].name = ("aeiou".contains(unit.first ?? "x") ? "an " : "a ") + unit
+        }
         return top + lanes
+    }
+
+    /// The walk as the plate numbers it: it starts where a person starts it, each front end into the root (one number
+    /// for both), whether or not the plan said so; a step between two front ends is their wiring, not the walk.
+    static func walk(_ plan: PlatePlan, graph: PlateGraph, lanes: [PlatePlan.Lane], resolve: (String) -> String) -> [PlatePlan.Step] {
+        guard let root = graph.root, let front = lanes.first(where: { $0.id == "front" }) else { return plan.walk }
+        let fronts = Set(front.boxes)
+        let steps = plan.walk.filter { !(fronts.contains(resolve($0.from)) && fronts.contains(resolve($0.to))) }
+        let into = steps.filter { fronts.contains(resolve($0.from)) && resolve($0.to) == root }
+        let entering = graph.starters.filter { fronts.contains($0.name) && $0.reaches.contains(root) }
+            .filter { starter in !into.contains { resolve($0.from) == starter.name } }
+            .map { PlatePlan.Step(from: $0.name, to: root) }
+        return into + entering + steps.filter { step in !into.contains(step) }
     }
 
     // MARK: Header
@@ -225,12 +254,15 @@ enum PlateCompose {
     /// leaves (`start`, `end`), what the plate shows (`subject`), and the code's kind of part. "One turn, every
     /// service"; "from the ask to the records: what each service is responsible for, in the order a turn passes through
     /// it". A header the plan writes itself is kept unless it echoes the worked example.
+    /// One of the plan's header words, plain: lowercased, its article dropped, never the worked example's.
+    static func header(word text: String?, fallback: String) -> String {
+        var said = (text ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        for article in ["a ", "an ", "the ", "one "] where said.hasPrefix(article) { said = String(said.dropFirst(article.count)) }
+        return said.isEmpty || said.count > 24 || PlateDraft.exampleWords.contains(said) ? fallback : said
+    }
+
     static func header(_ spec: inout PlateSpec, plan: PlatePlan, graph: PlateGraph, names: [String]) {
-        func word(_ text: String?, _ fallback: String) -> String {
-            var said = (text ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-            for article in ["a ", "an ", "the ", "one "] where said.hasPrefix(article) { said = String(said.dropFirst(article.count)) }
-            return said.isEmpty || said.count > 24 || PlateDraft.exampleWords.contains(said) ? fallback : said
-        }
+        func word(_ text: String?, _ fallback: String) -> String { header(word: text, fallback: fallback) }
         func article(_ word: String) -> String { "aeiou".contains(word.first ?? "x") ? "an" : "a" }
         func own(_ text: String?) -> String? { text.flatMap { $0.isEmpty || PlateDraft.echoes($0) ? nil : $0 } }
         let kind = (graph.kind ?? "part").lowercased()

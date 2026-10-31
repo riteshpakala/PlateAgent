@@ -91,6 +91,7 @@ final class PlateGraphTests: XCTestCase {
         XCTAssertEqual(app.what, "A windowed till: one window a register", "an app is named for the package")
         XCTAssertEqual(app.reaches, ["ShopAppRoot"], "the app's root, which names the root")
         XCTAssertEqual(graph.starters.first { $0.name == "ShopAppRoot" }?.reaches, ["ShopRoot", "ThemeService"])
+        XCTAssertEqual(graph.starters.first { $0.name == "ShopRoot" }?.reaches, [])
         XCTAssertEqual(graph.starters.first { $0.name == "ThemeService" }?.role, .held)
         let said = graph.render()
         XCTAssertTrue(said.contains("- shop · what a person runs · Sources/ShopCLI → ShopRoot\n  a till in a terminal"), said)
