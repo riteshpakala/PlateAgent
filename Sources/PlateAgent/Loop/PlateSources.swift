@@ -1,8 +1,9 @@
 import Foundation
 
-/// What the model drafts from: the files and folders named in `sources`, read as a digest the model can hold — a
-/// folder's tree, and of each file what says what it is (its opening comment, its type lines, its Granite
-/// declarations, its functions), capped, so a folder of forty files fits in a prompt.
+/// What the model drafts from: the files and folders named in `sources`, read as a digest the model can hold — first
+/// the code's own graph (`PlateGraph`: the parts, who refers to whom, what starts them), then a folder's tree, and of
+/// each file what says what it is (its opening comment, its type lines, its Granite declarations, its functions),
+/// capped, so a folder of forty files fits in a prompt.
 struct PlateSources: Sendable {
     let digest: String
     let files: Int
@@ -28,8 +29,10 @@ struct PlateSources: Sendable {
                 files.append(url)
             }
         }
-        let ranked = Array(Self.rank(files, root: folder).prefix(maxFiles))
-        var digest = trees.joined(separator: "\n\n")
+        let urls = named.map { resolve($0, in: folder) }.filter { manager.fileExists(atPath: $0.path) }
+        let graph = PlateGraph.read(urls, root: folder).render()
+        let ranked = Array(Self.rank(files, root: folder).prefix(graph.isEmpty ? maxFiles : maxFiles / 2))
+        var digest = ([graph] + trees).filter { !$0.isEmpty }.joined(separator: "\n\n")
         var read = 0
         for file in ranked {
             guard digest.count < limit, let text = try? String(contentsOf: file, encoding: .utf8) else { continue }

@@ -46,7 +46,7 @@ struct PlateLoop: Sendable {
             last = round
             let normal = spec.normalized()
             let checked = normal.check()
-            let drawn = normal.clamped()
+            let drawn = PlateOrder.ordered(normal.clamped())
             let grid = PlateGrid.make(drawn)
             let measures = try await context.compute.measures(drawn, grid: grid)
             let layout = PlateLayout.make(drawn, grid: grid, measures: measures)
@@ -69,7 +69,7 @@ struct PlateLoop: Sendable {
     }
 
     private func ask(_ model: any AgentHostModel, system: String, user: String) async throws -> PlateSpec {
-        let data = try await model.object(schema: PlateDraft.schema, system: system, user: user, maxTokens: 4_000, seconds: 300)
+        let data = try await model.object(schema: PlateDraft.schema, system: system, user: user, maxTokens: 6_000, seconds: 420)
         do {
             return try JSONDecoder().decode(PlateSpec.self, from: data)
         } catch {
