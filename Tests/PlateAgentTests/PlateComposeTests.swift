@@ -47,6 +47,10 @@ final class PlateComposeTests: XCTestCase {
                                "modelservice→mlx -  dashedGrey",
                                "sessionservice→modelservice - use solid"])
         XCTAssertEqual(spec.normalized().check().filter { $0.kind == .unknown }, [], "every arrow is between boxes it drew")
+        XCTAssertEqual(spec.node("mlx")?.under, "modelservice", "a lane of four hangs an external under its part")
+        let roomy = PlateCompose.spec(PlatePlan(lanes: [.init(id: "turn", name: "a turn", colour: .blue, boxes: ["SessionService", "ModelService"])],
+                                                externals: [.init(name: "MLX", under: "ModelService")]), graph: graph)
+        XCTAssertNil(roomy.node("mlx")?.under, "a lane with room sets it in the row, beside its part")
     }
 
     func testTheCodesOwnLineReadsAsADuty() {

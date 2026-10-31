@@ -71,8 +71,13 @@ enum PlateCompose {
             let id = unique(PlateLoose.slug(external.name), in: Set(ids.values))
             ids[external.name] = id
             kinds[id] = .external
+            // In the row beside its part while the lane has room (a full lane of four, or a lane beside another, hangs it
+            // under the part).
+            let lanePlan = plan.lanes.first { $0.id == hostNode.lane }
+            let inRow = spec.nodes.filter { $0.lane == hostNode.lane && $0.under == nil }.count
+            let beside = lanePlan.map { !half($0) } == true && inRow < 4 && hostNode.under == nil
             spec.nodes.append(PlateNode(id: id, lane: hostNode.lane, name: external.name, code: external.what.map { sentence($0, limit: 40) },
-                                        kind: .external, under: hostNode.under ?? hostID))
+                                        kind: .external, under: beside ? nil : hostNode.under ?? hostID))
         }
 
         // The walk, numbered in order; then each agent's run and each external's wire; then the code's other references.
