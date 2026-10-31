@@ -39,7 +39,7 @@ public struct PlateAgent: GraniteAgentPackage {
     public static let word = "plate"
     public static let summary = "draws an editorial architecture plate of a project — its flow, its services, who calls whom — from its folders, and writes it as a PNG."
     public static let fields = [
-        "brief": "what to draw: the lanes (tiers, top to bottom) and the one path the numbers walk, end to end",
+        "brief": "what the person asked for: the path the numbers walk, what to put first; never a guess at the architecture",
         "sources": "the folders or files the plate is drawn from, relative to the project",
         "spec": "a plate's PNG from an earlier call (it carries its spec), to draw again; with a brief, changed as the brief asks",
         "output": "where to write the PNG; docs/README_Assets/<title>.png when the project has that folder",
@@ -47,13 +47,15 @@ public struct PlateAgent: GraniteAgentPackage {
     ]
     public static let guide = """
         Ask plate for one picture of one idea: a flow through a system, its services and who calls whom, how a request \
-        or a turn passes through it. Give it `sources`: the folders the boxes live in (a Services folder, the Sources \
-        tree), not single files. Say in `brief` what you have learned that the files do not say at a glance: the tiers \
-        from top to bottom, which parts are agents or across a wire, and the one path the numbers should walk, end to \
-        end, in order. It drafts the plate on the loaded model, lays it out, measures it in WebKit and fixes what \
-        overflowed, overlapped or crossed, up to `rounds`; a call takes a few minutes. It answers with the PNG (2x), \
-        which carries the spec it was drawn from: to change a plate, call again with `spec` set to its PNG and say \
-        the change in `brief`. Not for charts of numbers, screenshots or pictures that are not a system's structure.
+        or a turn passes through it. Give it `sources`: the folders the parts live in (a Services folder, a Sources \
+        tree). It reads the code itself — the parts, who refers to whom, the agents they run, what starts them, \
+        including the same kind of part in other folders — so `brief` says only what the person asked for: which path \
+        the numbers should walk, what to put first. Never guess the architecture in `brief`; a guess that the code \
+        does not bear out is drawn over. Call it once you know which folders; there is no need to read them first. It \
+        drafts the plate on the loaded model, lays it out, measures it in WebKit and fixes what overflowed, overlapped \
+        or crossed, up to `rounds`; a call takes a few minutes. It answers with the PNG (2x), which carries the spec it \
+        was drawn from: to change a plate, call again with `spec` set to its PNG and say the change in `brief`. Not for \
+        charts of numbers, screenshots or pictures that are not a system's structure.
         """
     /// One WebKit page draws every plate: calls take turns.
     public static let lanes: Int? = 1
