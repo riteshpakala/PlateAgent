@@ -1,0 +1,51 @@
+{
+  "name": "Plate",
+  "tagline": "An architecture plate of a project, drawn from its code.",
+  "category": "developer",
+  "keywords": [
+    "architecture",
+    "diagram",
+    "readme",
+    "docs",
+    "flow",
+    "services",
+    "png",
+    "webkit"
+  ],
+  "platforms": [
+    "macOS 26"
+  ],
+  "license": "MIT",
+  "fields": [
+    {
+      "name": "brief",
+      "type": "string",
+      "required": false,
+      "note": "what the person asked for: the path the numbers walk, what to put first; never a guess at the architecture"
+    },
+    {
+      "name": "sources",
+      "type": "[string]",
+      "required": false,
+      "note": "the folders or files the plate is drawn from, relative to the project"
+    },
+    {
+      "name": "spec",
+      "type": "string",
+      "required": false,
+      "note": "a plate’s PNG from an earlier call (it carries its spec), to draw again; with a brief, changed as the brief asks"
+    },
+    {
+      "name": "output",
+      "type": "string",
+      "required": false,
+      "note": "where to write the PNG; docs/README_Assets/<title>.png when the project has that folder"
+    },
+    {
+      "name": "rounds",
+      "type": "integer",
+      "required": false,
+      "note": "how many times to fix what the plate measured; 3 when left out"
+    }
+  ]
+}
