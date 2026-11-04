@@ -18,7 +18,8 @@ final class PlateLoopTests: XCTestCase {
         let model = FakeHostModel([try json(long), try json(Fixture.flow)])
         let notes = NoteBox()
         let host = AgentHost(directory: folder.path, ask: "a graphic of the flow $plate", model: model, note: { notes.append($0) })
-        let input = #"{"sources": ["Sources/App"], "brief": "the turn, through the services", "directory": "\#(folder.path)"}"#
+        // One file is no graph: the flow is asked for by name, and the model drafts its lanes.
+        let input = #"{"sources": ["Sources/App"], "form": "architecture", "brief": "the turn, through the services", "directory": "\#(folder.path)"}"#
         let answer = try await AnyAgentPackage(PlateAgent.self).perform(Data(input.utf8), host: host)
         let result = try JSONDecoder().decode(PlateResult.self, from: answer)
         XCTAssertEqual(result.rounds, 2, "the first draft overflowed; the second measured clean")

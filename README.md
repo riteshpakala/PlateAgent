@@ -1,10 +1,16 @@
 # PlateAgent
 
-An editorial architecture plate of a project, shipped as a [Granite](https://github.com/riteshpakala/Granite)
-agent package. A call names the folders a system lives in; the package reads the code's graph off them, the app's
-own model plans what the plate says, the package composes it, the kit lays it out in the Rao plate style, WebKit
-measures it, and the model revises the plan until it measures clean. The plate is written as a PNG at 2x, which
-carries the spec it was drawn from.
+Editorial plates in the Rao plate style, shipped as a [Granite](https://github.com/riteshpakala/Granite) agent
+package, in two forms:
+
+- **An infographic of anything**: inspirational quotes, a poem or a creative piece, how something works, a process, a
+  comparison, a handful of figures. The app's own model writes it as blocks (quotes, cards, steps, lists, figures, a
+  flow of stops, a simple drawing) and the kit sets them on a grid under the plates' header.
+- **An architecture plate of a project**: a call names the folders a system lives in; the package reads the code's
+  graph off them, the model plans what the plate says, the package composes it and the kit lays it out.
+
+Either way WebKit measures it and the model revises until it measures clean. The plate is written as a PNG at 2x,
+which carries the spec it was drawn from.
 
 It is the process behind Craft's README plates ([`flow.png`](https://github.com/riteshpakala/Craft)), made an
 agent: the taste lives in the kit, the judgment in a loop of drawing and measuring, and the model only ever says
@@ -41,12 +47,53 @@ package's `guide` rides the turn's prompt, and the call shows on Craft's agent m
 | `spec` | optional | a plate's PNG from an earlier call (or a spec's JSON): drawn again with no draft; with `brief`, changed as it asks |
 | `output` | optional | where to write the PNG; `docs/README_Assets/<title>.png` (then `docs/`, then the folder) when left out |
 | `rounds` | optional | how many times the model may fix what the plate measured; 3 when left out |
+| `form` | optional | `infographic` (anything: quotes, a creative piece, an explanation, a process, figures) or `architecture` (a project's flow from its code); left out, sources that hold code are drawn as their architecture and everything else as an infographic |
 | `directory` | the host's | the folder the host works in; a host fills it and does not show it to a model |
 
 The answer is a `PlateResult`: the PNG and the spec written, as absolute paths, the PNG's size, the rounds it
-took, what the last round still found (one sentence each), the title, and how many lanes, boxes and arrows it has.
+took, what the last round still found (one sentence each), the title, its `form`, and how many lanes, boxes and
+arrows (an architecture) or blocks (an infographic) it has. When findings are left, `note` tells the calling model
+the call is done: drawing again with the same brief draws the same plate. A calling model that reads findings
+otherwise calls again, rewording its brief, until its turn runs out.
 
-## How a plate is made
+## An infographic of anything
+
+```swift
+let input = Data(#"{"form": "infographic", "brief": "five inspirational quotes on starting and finishing"}"#.utf8)
+```
+
+The model writes a header (caption, title, subtitle, and an optional heading and machine line over the blocks) and
+two to nine blocks in reading order, on one to three columns; a block may span more than one, and no row is left part empty (the block before a gap widens to fill it).
+
+| Kind | What it holds | Drawn as |
+|---|---|---|
+| `quote` | `text`, and `by` only when the person named that speaker | the words large, between gold marks, who said them in small capitals |
+| `card` | `title` and `text` | a heading and a few lines |
+| `steps` | `title` and `items` | numbered on gold rings |
+| `list` | `title` and `items` | lines on coloured dots |
+| `stat` | `figure` and `title` | the figure in the title's silver, what it measures under it |
+| `flow` | `title` and `items` | stops joined by arrows: a process, a cycle, a path |
+| `drawing` | `paths`: SVG path data on a 100 × 100 square, and `title` | outlined strokes in the block's colour; nothing but path data reaches the page |
+
+Each block takes a plate colour (gold, blue, green, orange, violet, red, or dial for a quiet one) on its bar. The
+page fits its blocks: it is as tall as the card, the tag at its foot. The findings an infographic hears are its
+header's widths, what a plate holds (characters, lines, blocks), a plate too tall to read as one picture, and words
+copied from the prompt's example, which is a bakery's. A title wider than the plate is drawn whole and smaller, down
+to 70% of its size, never cut (a local model asked to shorten one often answers the same spec), and a revision that
+changes nothing ends the rounds.
+
+A quote is never credited to someone the person did not name. A local model does not know who said a line: asked
+for quotes, it puts real names on words they never said, or makes names up. So the plate keeps a quote's `by` only
+when the person named that speaker (in their ask, or in `brief` on a call with no ask) or a source file does, and
+draws any other quote with no name, telling the model so it can fix what its legend says of the lines. Inside an
+app the brief is the calling model's words, and it invents speakers too, so it names no one there. For quotes by
+real people, name them in the ask:
+
+```
+Put these on a $plate: Lao Tzu, "A journey of a thousand miles begins with a single step." Socrates, "The unexamined life is not worth living."
+```
+
+## How an architecture plate is made
 
 | Step | Whose | What |
 |---|---|---|
@@ -64,7 +111,8 @@ took, what the last round still found (one sentence each), the title, and how ma
 
 The best round is written. Nothing on a plate is placed by the model, and it never writes an arrow the code does
 not have: a local coder plans a good plate in a minute, and it is never asked to place forty labels. Sources with
-no code graph (a folder of notes) are drafted whole instead: the model writes the spec.
+no code graph (a folder of notes) are an infographic of what they say, unless the call asks for `form: architecture`,
+when the model drafts the lanes whole.
 
 ## The kit
 

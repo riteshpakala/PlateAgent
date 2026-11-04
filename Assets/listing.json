@@ -1,16 +1,16 @@
 {
   "name": "Plate",
-  "tagline": "An architecture plate of a project, drawn from its code.",
-  "category": "developer",
+  "tagline": "Editorial plates of anything: quotes, explainers, processes, and a project's architecture.",
+  "category": "graphics",
   "keywords": [
+    "infographic",
+    "quotes",
+    "poster",
+    "explainer",
+    "illustration",
     "architecture",
     "diagram",
-    "readme",
-    "docs",
-    "flow",
-    "services",
-    "png",
-    "webkit"
+    "png"
   ],
   "platforms": [
     "macOS 26"
@@ -21,7 +21,7 @@
       "name": "brief",
       "type": "string",
       "required": false,
-      "note": "what the person asked for: the path the numbers walk, what to put first; never a guess at the architecture"
+      "note": "what the person asked for: for an infographic its subject and what to say; for an architecture the path the numbers walk; never a guess at the architecture"
     },
     {
       "name": "sources",
@@ -46,6 +46,12 @@
       "type": "integer",
       "required": false,
       "note": "how many times to fix what the plate measured; 3 when left out"
+    },
+    {
+      "name": "form",
+      "type": "string",
+      "required": false,
+      "note": "infographic (quotes, a creative piece, an explanation, a process, figures) or architecture (a project’s flow from its code); left out, code sources are drawn as their architecture and everything else as an infographic"
     }
   ]
 }

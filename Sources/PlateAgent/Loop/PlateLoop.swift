@@ -28,6 +28,12 @@ struct PlateLoop: Sendable {
             // A plate's PNG carries the spec it was drawn from; a JSON is a spec as written.
             let json = url.pathExtension.lowercased() == "png" ? PlatePNG.embedded(in: data).map { Data($0.utf8) } : data
             guard let json else { throw PlateError.spec("\(url.lastPathComponent) carries no plate spec") }
+            // An infographic drawn before is drawn again as one.
+            if PlateSheet.isSheet(json) {
+                let sheet: PlateSheet
+                do { sheet = try JSONDecoder().decode(PlateSheet.self, from: json) } catch { throw PlateError.spec("\(error)") }
+                return try await self.sheet(sheet, sources: nil, folder: folder, rounds: rounds)
+            }
             do { spec = try JSONDecoder().decode(PlateSpec.self, from: json) } catch { throw PlateError.spec("\(error)") }
             model = host.model
             // A spec and a brief: what the brief asks of the plate, made on the spec before it is drawn again.
@@ -41,9 +47,21 @@ struct PlateLoop: Sendable {
         } else {
             guard let offered = host.model else { throw PlateError.noModel }
             model = offered
+            // An infographic named, or no sources to read: nothing of the project's code is drawn.
+            let named = PlateForm(loose: input.form)
+            let given = !(input.sources ?? []).isEmpty
+            if named == .infographic || (named == nil && !given) {
+                let sources = given ? PlateSources.read(input.sources ?? [], in: folder) : nil
+                if let sources { yield(.read(files: sources.files, characters: sources.digest.count)) }
+                return try await sheet(nil, sources: sources, folder: folder, rounds: rounds)
+            }
             let sources = PlateSources.read(input.sources ?? [], in: folder)
             yield(.read(files: sources.files, characters: sources.digest.count))
             host.note("read \(sources.files) file\(sources.files == 1 ? "" : "s") under \((input.sources ?? []).joined(separator: ", ").nonEmpty ?? folder.lastPathComponent)")
+            // Sources with no code graph are an infographic of what they say, unless the call asked for its architecture.
+            if PlateForm.chosen(input.form, graph: sources.graph) == .infographic {
+                return try await sheet(nil, sources: sources, folder: folder, rounds: rounds)
+            }
             let user = PlateDraft.draft(ask: host.ask, brief: input.brief, project: folder.lastPathComponent, sources: sources)
             if let read = sources.graph, read.parts.count >= 2 {
                 graph = read
@@ -217,7 +235,7 @@ struct PlateLoop: Sendable {
 
     /// `PLATE_HTML=<folder>` keeps each round's page there, to open in a browser, and the plan it was composed from:
     /// never beside the PNG, where a host that indexes HTML as code would read it.
-    private static func keep(_ html: String, round: Int, plan: PlatePlan?) {
+    static func keep(_ html: String, round: Int, plan: PlatePlan?) {
         guard let dir = ProcessInfo.processInfo.environment["PLATE_HTML"], !dir.isEmpty else { return }
         let url = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

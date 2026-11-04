@@ -14,6 +14,8 @@ extension PlateKit {
         <script>
         window.__plate = window.__plate || {};
         window.__plate.settle = () => document.fonts.ready.then(() => {
+          // A page that sizes its header (an infographic fits its title) does so before the header is placed.
+          if (window.__plate.before) window.__plate.before();
           const ctx = document.createElement("canvas").getContext("2d");
           const measure = (el) => {
             const cs = getComputedStyle(el), text = el.textContent.trim();
@@ -46,7 +48,8 @@ extension PlateKit {
           const height = parseFloat(getComputedStyle(document.body).height) + shift;
           document.documentElement.style.height = document.body.style.height = height + "px";
           document.body.dataset.height = height;
-          return height;
+          // A page that fits its content (an infographic) ends itself once everything is in place.
+          return window.__plate.after ? window.__plate.after(height) : height;
         });
         </script>
         """

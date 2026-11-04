@@ -1,10 +1,11 @@
 import Foundation
 
-/// What a run streams while it works: the sources read, the spec drafted, each round measured and revised, and
-/// the plate written.
+/// What a run streams while it works: the sources read, the spec drafted (an architecture flow's or an
+/// infographic's), each round measured and revised, and the plate written.
 public enum PlateFrame: Sendable {
     case read(files: Int, characters: Int)
     case drafted(PlateSpec)
+    case sketched(PlateSheet)
     case measured(round: Int, findings: [PlateFinding])
     case revised(round: Int)
     case written(PlateResult)

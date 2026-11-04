@@ -20,14 +20,15 @@ final class PlateAgentTests: XCTestCase {
             .init(name: "spec", schema: .string, required: false),
             .init(name: "output", schema: .string, required: false),
             .init(name: "rounds", schema: .integer, required: false),
+            .init(name: "form", schema: .string, required: false),
             .init(name: "directory", schema: .string, required: false),
         ]))
         XCTAssertTrue(plate.takesDirectory)
-        XCTAssertEqual(Set(plate.fields.keys), ["brief", "sources", "spec", "output", "rounds"], "a note beside every field the model sees")
+        XCTAssertEqual(Set(plate.fields.keys), ["brief", "sources", "spec", "output", "rounds", "form"], "a note beside every field the model sees")
     }
 
     func testTheGuideSaysHowToAskForAPlate() {
         let guide = AnyAgentPackage(PlateAgent.self).guide
-        for word in ["sources", "brief", "spec", "rounds", "path"] { XCTAssertTrue(guide.contains(word), "the guide says \(word)") }
+        for word in ["sources", "brief", "spec", "rounds", "path", "infographic", "architecture", "quotes"] { XCTAssertTrue(guide.contains(word), "the guide says \(word)") }
     }
 }

@@ -1,6 +1,6 @@
 // swift-tools-version:6.0
-// PlateAgent: an editorial architecture plate of a project's flow, drafted by the host's model, laid out and
-// measured in WebKit, and written as a PNG at 2x, as a Granite agent package. An app that links it finds the
+// PlateAgent: an editorial plate, an infographic of anything or a project's architecture from its code, drafted by
+// the host's model, laid out and measured in WebKit, and written as a PNG at 2x, as a Granite agent package. An app that links it finds the
 // `plate` agent through Granite's roster, with nothing listed by hand.
 
 import PackageDescription
