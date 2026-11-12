@@ -4,7 +4,9 @@ extension PlateKit {
     /// The header's rhythm, shared by Rao's plates: the mark's ink sits 70 px from the top and the left; every
     /// header line's ink starts at the mark's left edge (an italic first glyph overhangs by its own amount, so the
     /// page measures it); the title's ink starts 70 px under the mark's; what follows starts 54 px under the
-    /// subtitle's baseline, and the page grows or shrinks to keep its foot.
+    /// subtitle's baseline, and the page grows or shrinks to keep its foot. The mark is rao.nyc's rr-mark.png, 986 × 802
+    /// with its shadow, its ink (alpha ≥ 128) at 26, 14 to 945, 761: drawn 46.2 wide at 68.8, 69.3 (`.mark` in
+    /// `PlateKit`, as Braid's plates draw it), its ink is 35 px tall from 70, 70, and the caption at 145.8 keeps its gap.
     ///
     /// PIN: called, not run on load. The renderer awaits `window.__plate.settle()`, which answers the page's height
     /// once the face is loaded and everything is in place; the plates' script ran itself on `fonts.ready` and was

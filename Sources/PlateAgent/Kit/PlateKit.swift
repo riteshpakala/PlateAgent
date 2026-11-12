@@ -18,8 +18,8 @@ enum PlateKit {
         html, body { margin: 0; width: \(n(PlatePalette.width))px; height: \(n(height))px; overflow: hidden; }
         body { position: relative; font-family: "Playfair", Georgia, serif; font-style: italic; color: #a29f97; font-variant-numeric: lining-nums;
                background: radial-gradient(ellipse 90% 100% at 22% 20%, #20201c 0%, #191917 45%, #121211 100%); }
-        .mark { position: absolute; left: 62.5px; top: 60px; width: 64px; }
-        .caption { position: absolute; left: 150px; top: 78px; letter-spacing: .3em; font-size: 15px; color: #8b8a84; }
+        .mark { position: absolute; left: 68.8px; top: 69.3px; width: 46.2px; }
+        .caption { position: absolute; left: 145.8px; top: 78px; letter-spacing: .3em; font-size: 15px; color: #8b8a84; }
         .title { position: absolute; left: 39.5px; padding-left: 40px; top: 162px; font-size: 104px; line-height: 1; font-weight: 500; letter-spacing: -.005em; padding-right: 30px; padding-bottom: 32px;
                  background: linear-gradient(100deg, #8d9097 0%, #c8cad0 35%, #f2f3f6 58%, #b6b9c1 100%);
                  -webkit-background-clip: text; background-clip: text; color: transparent; white-space: nowrap; }
