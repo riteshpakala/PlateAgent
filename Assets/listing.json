@@ -53,5 +53,12 @@
       "required": false,
       "note": "infographic (quotes, a creative piece, an explanation, a process, figures) or architecture (a project’s flow from its code); left out, code sources are drawn as their architecture and everything else as an infographic"
     }
+  ],
+  "illustrations": [
+    {
+      "path": "Assets/illustrations/architecture-plate.png",
+      "alt": "A plate titled One frame, end to end, with a box for each type in a renderer, joined by numbered arrows.",
+      "caption": "An architecture plate, drawn from your code."
+    }
   ]
 }

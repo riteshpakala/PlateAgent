@@ -16,6 +16,17 @@ It is the process behind Craft's README plates ([`flow.png`](https://github.com/
 agent: the taste lives in the kit, the judgment in a loop of drawing and measuring, and the model only ever says
 what the plate means.
 
+## What you get
+
+- **A plate, as a PNG at 2x**, in `docs/README_Assets/<title>.png` unless `output` says otherwise. It carries the
+  spec it was drawn from, so a later call draws it again, or changes it, with no draft.
+- **An architecture plate of a project**: the folders you name, read off the code. Every box is a type or a function
+  in them, and numbered arrows walk one path through it.
+- **An infographic of anything**: quotes, a poem, how something works, a process, a comparison, a handful of figures,
+  set on a grid under the plates' header.
+- **Measured until clean**: WebKit measures the plate and the model revises it, three rounds unless you say. Whatever
+  the last round still found is in the answer.
+
 ## How an app finds it
 
 PlateAgent is a `GraniteAgentPackage`, and it carries a record in its binary:
